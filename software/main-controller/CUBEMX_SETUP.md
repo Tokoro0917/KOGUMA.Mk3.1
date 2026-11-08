@@ -3,7 +3,7 @@
 KOGUMA.MkIIl の `.ioc`（STM32CubeIDE 用）をもとに、CMake で生成する `KOGUMA.Mk3.1` のプロジェクトを作る手順と、変える設定です。
 **CubeMX は Claude の環境では動かせないので、この作業は作者にお願いします。** 生成して push してもらえれば、そのあとのビルド・`App/` の追加は Claude がやります。
 
-設定の考え方は ToraNeko.Mk3 の `software/main-controller/CUBEMX_SETUP.md` と同じです。機体（ピン・クロック・周辺機能）は KOGUMA.MkIIl のまま変えず、ToraNeko.Mk3 で決めた作り（µs のタイマー、壁センサの連鎖、ログの DMA 送信）に要るものだけを足します。
+設定の考え方は ToraNeko.Mk3 の `software/main-controller/CUBEMX_SETUP.md` と同じです。機体（ピン・クロック）は KOGUMA.MkIIl のまま変えず、ToraNeko.Mk3 で決めた作り（制御周期 2kHz を TIM11 で、µs のタイマー、壁センサの連鎖、ログの DMA 送信）に要るものを足します（制御周期を ToraNeko に合わせるのは 2026-11-08 に決定）。
 ピンは [PIN_REQUIREMENTS.md](PIN_REQUIREMENTS.md)。
 
 ## 0. 用意するもの
@@ -69,11 +69,13 @@ KOGUMA.MkIIl では CubeMX で設定せず、`UI.c` の `Switch_Init()` で入�
 | モーター PWM | TIM3 CH1〜CH4 | なし | PSC 9-1、ARR 200-1 | 50kHz |
 | 吸引ファン PWM | TIM2 CH1 | なし | PSC 18-1、ARR 100-1 | 50kHz |
 | ブザー | TIM4 CH4 | なし | PSC 90-1、ARR 100-1 | 10kHz |
-| 制御周期 | TIM6 | **NVIC を有効にする**（下の 3-8） | PSC 90-1、ARR 1000-1 | 1kHz |
+| 制御周期 | **TIM11（新しく足す）** | **Activated** に ✓（内部クロック、ピンは使わない）。NVIC を有効にする（下の 3-8） | PSC **180-1**、ARR **500-1** | **2kHz**（ToraNeko.Mk3 と同じ） |
+| （使わない） | **TIM6** | **Disable にする**（KOGUMA.MkIIl の制御周期。KOGUMA.Mk3.1 では TIM11 に変えた） | - | - |
 | µs を数える | **TIM5（新しく足す）** | Clock Source = **Internal Clock** | PSC **90-1**、ARR **4294967295**（0xFFFFFFFF） | 1MHz で数え続ける。割り込みは使わない |
 | 壁センサの待ち時間 | **TIM8（新しく足す）** | Clock Source = **Internal Clock**、**One Pulse Mode** に ✓ | PSC **180-1**、ARR **35-1**、Trigger Event Selection（TRGO）= **Update Event** | 1 回 35µs。割り込みは使わない |
 
-- TIM5・TIM6 は APB1（タイマー 90MHz）、TIM8 は APB2（タイマー 180MHz）なので、PSC が違う
+- TIM5 は APB1（タイマー 90MHz）、TIM8・TIM11 は APB2（タイマー 180MHz）なので、PSC が違う（ToraNeko の F411 は全部 100MHz）
+- TIM11 は、ToraNeko.Mk3 と同じタイマー。割り込みの名前（`TIM1_TRG_COM_TIM11_IRQn`）も F411 と同じなので、`sys/scheduler.c` をそのまま持ってこられる
 - TIM8 は、LED を点けたのと同時に動かし、35µs たったら ADC を起動するためのもの（ToraNeko.Mk3 の TIM3 と同じ役目）。TIM6・TIM7 は ADC を起動できないので TIM8 にした
 - TIM8 はピンを使わない（チャンネルは全部 Disable のまま）
 
@@ -122,13 +124,14 @@ System Core → NVIC で、次のように設定します（数字が小さい�
 | 割り込み | Enabled | Preemption Priority | 用途 |
 |---|---|---|---|
 | DMA2 stream0 global interrupt（ADC1） | ✓ | **1** | 壁センサの連鎖（次の LED へ進める） |
-| TIM6 global interrupt, DAC1 and DAC2 underrun error interrupts | ✓ | **2** | 制御周期 |
+| TIM1 trigger and commutation interrupts and TIM11 global interrupt | ✓ | **2** | 制御周期（2kHz） |
 | DMA1 stream6 global interrupt（USART2_TX） | ✓ | **5** | ログ送信が終わった |
 | USART2 global interrupt | ✓ | **5** | HAL の DMA 送信の終わりを知らせる |
 
 ### 3-9. 変えないもの
 
 - クロック（HSE 10MHz → 180MHz）、PA10〜PA12（GPIO 出力、用途は回路図で確認）、SWD（PA13・PA14）
+- TIM6 の割り込み（KOGUMA.MkIIl では有効）は、TIM6 を Disable にすると一緒になくなる。NVIC の一覧に残っていたら ✓ を外す
 
 ## 4. 生成して push する
 

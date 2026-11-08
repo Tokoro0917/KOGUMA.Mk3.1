@@ -1,4 +1,6 @@
-# 書き直しの判断：ToraNeko.Mk3 から持ってくるもの、KOGUMA.MkIIl から持ってくるもの
+# KOGUMA からの移植：ToraNeko.Mk3 から持ってくるもの、KOGUMA.MkIIl から持ってくるもの
+
+（ToraNeko.Mk3 の `KOGUMA_PORTING.md` と同じ役目のファイル。2026-11-08 に `PORTING.md` から名前を変えた）
 
 KOGUMA.Mk3.1 は、ToraNeko.Mk3 の `App/` を持ってきて KOGUMA の機体に合わせる形で作ります。
 ToraNeko.Mk3 は KOGUMA.MkIIl から「使っていない機能は持ち込まない」と決めて作ったので（ToraNeko.Mk3 の `KOGUMA_PORTING.md`）、**KOGUMA.MkIIl にはあって ToraNeko.Mk3 にはない機能**があります。
@@ -6,7 +8,9 @@ ToraNeko.Mk3 は KOGUMA.MkIIl から「使っていない機能は持ち込ま�
 
 > 見ているコード：KOGUMA.MkIIl `fa64b58`（2026-10-27）、ToraNeko.Mk3 `ecd8e10`（2026-11-04）。新しい変更は毎朝 [../../docs/reference_sync.md](../../docs/reference_sync.md) で見る。
 >
-> **2026-11-08 の作者の決定：KOGUMA.MkIIl の今の探索モード（モード0 No.1〜12）は全部残す。** 下の B の探索にかかわる行（B1〜B3、B14、B15）はこれで確定した。
+> **2026-11-08 の作者の決定：**
+> - **KOGUMA.MkIIl の今の探索モード（モード0 No.1〜12）は全部残す。** 下の B の探索にかかわる行（B1〜B3、B14、B15）はこれで確定した
+> - **ディレクトリの構成、ファイル名、制御方法、制御周期、フェイルセーフは ToraNeko.Mk3 に合わせる。** 下の E にまとめた
 
 ## 方針
 
@@ -61,6 +65,62 @@ ToraNeko.Mk3 は KOGUMA.MkIIl から「使っていない機能は持ち込ま�
 | 12 | No.10 の既知区間を斜めで | **足した**（`path_make_known_diagonal`） | ステップ9・10 |
 
 番号を KOGUMA と同じにするか、ToraNeko の MODES.md の形に並べ直すかは、ステップ9で MODES.md を作るときに決める。
+
+## E. ToraNeko.Mk3 に合わせて変えるもの（2026-11-08 に作者が決めた）
+
+KOGUMA.MkIIl のやり方をやめて、ToraNeko.Mk3 と同じにするもの。値（係数・しきい値）は、KOGUMA の機体で決め直す。
+
+### E1. ディレクトリの構成・ファイル名
+
+| KOGUMA.MkIIl | KOGUMA.Mk3.1（ToraNeko.Mk3 と同じ） |
+|---|---|
+| リポジトリの一番上に CubeIDE のプロジェクト（`Core/`、`Drivers/`、`.ioc`）。資料は `docs/`、ツールは `tools/`、テストは `test/` | 一番上は `software/`・`hardware/`・`mechanical/`・`docs/`。ファームウェアは `software/main-controller/` の中に、資料（README・PIN_REQUIREMENTS・CUBEMX_SETUP・KOGUMA_PORTING・MODES）、`tools/`・`logs/`・`test/`、CubeMX（CMake）のプロジェクト `KOGUMA.Mk3.1/` |
+| 自作のコードも `Core/Src`・`Core/Inc` に、生成コードと一緒に置く | 自作のコードは全部 `App/` に置き、層ごとに `config/`・`drv/`・`ctrl/`・`maze/`・`sys/` に分ける。`Core/` は生成コード（USER CODE 欄に `App/` の呼び出しを 1 行書くだけ） |
+| ファイル名は大文字まじり・略語（`Move.c`、`PL_sensor.c`、`Wallsensor.c`、`Define.h`） | ToraNeko と同じ名前（小文字＋アンダースコア。`ctrl/run.c`、`drv/wall.c`、`ctrl/wall_ctrl.c`、`config/robot_params.h`）。対応は README の「KOGUMA.MkIIl のファイルとの対応」 |
+| 関数名・変数名（`Motor_trapezoid_PID`、`G_Robot_speed`） | ToraNeko の命名規則（`モジュール名_動詞_目的語`、ファイルをまたぐ変数は `g_`、ファイルの中だけは `static` と `s_`）。README の「命名規則」 |
+
+### E2. 制御方法
+
+ToraNeko.Mk3 の `ctrl/`（`odometry.c`・`trajectory.c`・`control.c`・`wall_ctrl.c`・`side_edge.c`・`run.c`）をそのまま使う。
+
+| 項目 | KOGUMA.MkIIl | KOGUMA.Mk3.1（ToraNeko.Mk3 と同じ） |
+|---|---|---|
+| 目標の速さの作り方 | cos の形で上げ下げする（`motor.c` の `1 - cos(...)`）。縦横の直線は、減速を加速の 2 倍にしている | **台形**（加速度一定。`ctrl/trajectory.c`）。加速と減速は同じ加速度。PC テスト（`test_trajectory`）あり |
+| スラローム（ターン） | 前に進む速さは一定、角速度を cos の形で上げ下げ | 前に進む速さは一定、角速度を**台形**で上げ下げ（`trajectory_start_slalom()`）。形が変わるので、ターンの前距離・後距離は `test/test_turn.c --calc` で計算し直す（ステップ10） |
+| 速さの求め方 | エンコーダのカウントの差（左右の平均） | **2ms 前のカウントとの差**（`ctrl/odometry.c`。エンコーダの読みのぶれで速さがゆれないように。ToraNeko の 2026-11-03） |
+| 前に進む分の電圧 | フィードフォワード（`KT`・`KE` と、手合わせの `Aff`・`Bff`・`FF_offset`）＋ エンコーダの PID | **フィードフォワード（目標の速さ × FF_SPEED ＋ 目標の加速度 × FF_ACCEL ＋ 摩擦の分）＋ 速さのずれ × SPEED_KP ＋ 位置のずれ × SPEED_KI**（`ctrl/control.c`） |
+| 向きの分の電圧 | ジャイロの PID | **フィードフォワード（目標の角速度・角加速度を、タイヤ 1 つの速さ・加速度に直して同じ係数）＋ 角速度のずれ × OMEGA_KP ＋ 角度のずれ × ANGLE_KI** |
+| 係数の組 | 動きごとに 7 組（直進 `Ksp`…、吸引 `Ksp_Fun`…、壁合わせ `Ksp_AT`…、ターン `Ktp`…、スラローム `Ktp_sula`…、2000 `Ktp_sula_20`…、2400 `Ktp_sula_24`…） | **1 組**（`config/ctrl_gains.h`）。汎用の PID の関数は作らない |
+| 係数と制御周期 | 1kHz を前提にした値 | 周期から換算する作り（`CTRL_PERIOD_S`）。周期は 2kHz（E4） |
+| モーターへの出力 | Duty（`Motor_Voltage_L` を PWM の値にして出す） | **電圧を指定**（`motor_set_voltage()`。かける電圧 ÷ 今の電池の電圧で PWM の割合を決める）。上限の電圧は `drv/motor.c` |
+| 横の壁の補正 | `Wallsensor.c`（`G_WallCtrl_Use_mm`。センサ値版と距離版の 2 つ） | `ctrl/wall_ctrl.c`（距離 [mm] の 1 つだけ。P と D、上限あり）。斜めの補正、壁のない区間で向きを迷路の向きに戻す、両側の壁が続いたら基準の向きをリセット、も ToraNeko と同じ |
+| 前壁合わせ | `motor.c` の壁合わせ | `control_set_front_align()`（前の壁からのずれで目標の速さ・角速度を決める） |
+| 壁切れ | `motor.c`・`PillarEdge.c`（柱の壁切れ） | `ctrl/side_edge.c`（横のセンサの山の半分で、壁の終わり・柱の端を見つける。探索・最短走行で位置を直す） |
+
+**係数の初めの値**（ステップ7）：フィードフォワードは、KOGUMA.MkIIl のログから求めた 1 輪の電圧のモデル（KOGUMA.MkIIl の `docs/noise_limits.md`。前に進む分 V = 1.25 + 1.5v + 0.35a、向きの分 ΔV = 0.063ω + 0.006ω̇。v は m/s、a は m/s²、ω は rad/s、ω̇ は rad/s²。ToraNeko の係数は mm/s・mm/s² の単位なので、1000 で割って入れる）から入れる（± 20% くらいの見積もり。KOGUMA は吸引しながらのログが多いので、摩擦の分 1.25V には吸引の分も入っているかもしれない）。フィードバック（P・I）は ToraNeko の値から始めて、実機で合わせる。
+
+### E3. フェイルセーフ
+
+ToraNeko.Mk3 の `ctrl/control.c`（異常の見つけ方）・`sys/failsafe.c`（止まっているかを覚える）・`sys/explore.c`（迷路を戻して保存）をそのまま使う。ToraNeko の `KOGUMA_PORTING.md` の F1〜F6 と同じ。
+
+| 項目 | KOGUMA.MkIIl | KOGUMA.Mk3.1（ToraNeko.Mk3 と同じ） |
+|---|---|---|
+| 見つけるもの | 左右のタイヤの速さの差（`Failsafe_Motordiff`。しきい値が大きすぎて動いていない）、目標の速さより 2000mm/s 以上遅い・決まった速さの範囲で 100mm/s 未満（`Failsafe_MotorTagetdiff`） | **位置か角度のずれが大きすぎる**（すぐに止める）、**目標の速さよりずっと遅い（ぶつかった）**、**走っているはずなのにほとんど進んでいない（壁を押している）**。左右の差は見ない（F1） |
+| 止めるまで | 1 回でも当てはまったら止める（1kHz で 1 回） | 遅い・進まないの 2 つは、**FAILSAFE_HOLD_MS（ToraNeko は 10ms）続いたら止める**（ノイズ 1 回では止めない。F4）。ずれが大きすぎるのはすぐ |
+| しきい値 | 探索の速さの範囲（500〜1200mm/s）をコードに直接書いている | `config/ctrl_gains.h` に名前を付けて置く。「今は探索の直進中」かどうかは、速さの範囲ではなく、走らせる側が知らせる（F3）。**値はクラシックの速さ（探索 500・1000mm/s、最短 6000mm/s まで）に合わせて決め直す**（ToraNeko の値はハーフの速さ用） |
+| 止めたとき | モーターと吸引を止め、LED を全部 0.5 秒ごとに点滅、スイッチ S2 で戻る（2026-10-27 に ToraNeko と同じにした） | 同じ（F5）。戻るときに「ロード中」を出し、そのあいだはスイッチを押しても何も起きない。戻る先は、ToraNeko と同じく**同じモード・No. を選ぶ画面**（KOGUMA はモード0 No.0 に戻る。MODES.md で確かめる） |
+| 止めたわけ | 残らない | **止めたわけを覚えて、出力（ToraNeko のモード7 No.1）で出す**（`control_get_failsafe_reason()`） |
+| 迷路 | 最後の 5 区画の壁を戻して、RAM に保存（`Maze_Save`。電源を切ると消える） | 最後に壁を記録した 5 回ぶんを戻して、**Flash に保存**（電源を切っても残る。`maze_map_undo_recent_cells()` と `sys/flash.c`）。前の走行で記録した区画は戻さない |
+| 電池の電圧 | 電源を入れたときに調べ、下限より低ければ LED を全部点滅させて止まる | 電源を入れたときに調べる（F6）。点滅させるのは**外側の LED だけ**（フェイルセーフの全部の点滅と見分けるため）。KOGUMA は LED が 8 個なので、どれを外側にするかは MODES.md で決める。下限は KOGUMA の 4 セル（`LIMITBATT` 15.6V）のまま |
+
+### E4. 制御周期
+
+| 項目 | KOGUMA.MkIIl | KOGUMA.Mk3.1（ToraNeko.Mk3 と同じ） |
+|---|---|---|
+| 周期 | 1kHz（`INTERRUPTTIME 0.001` を直接使う） | **2kHz**。周期は `config/robot_params.h` の `CTRL_FREQ_HZ` から換算する |
+| タイマー | TIM6（`TIM6_DAC_IRQHandler` に制御の処理を直接書いている） | **TIM11**（`TIM1_TRG_COM_TIM11_IRQn`）。割り込みの入口は `sys/scheduler.c` を呼ぶだけ。処理時間と割り込みの間隔を TIM5（µs）で測って、いつでも出せるようにする |
+| 待ち時間 | `wait_ms`（TIM6 の共通のカウンタを 0 に戻して待つ） | SysTick（`HAL_GetTick()`） |
+| 壁センサ | 制御周期の割り込みで ADC＋DMA を起動し、完了割り込みで LED を切り替えてすぐ次を測る | 制御周期ごとに、タイマー（KOGUMA.Mk3.1 では TIM8）で 35µs 待ってから ADC を起動する連鎖（ToraNeko と同じ。ステップ6） |
 
 ## C. ToraNeko.Mk3 にあって KOGUMA.MkIIl にないもの（そのまま持ってくる）
 

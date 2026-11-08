@@ -49,7 +49,7 @@ KOGUMA.Mk3 メイン基板（STM32F446RE、LQFP64）のピン割り当てです�
 | エンコーダの SPI | SPI3 | SPI2 |
 | モーターの PWM | TIM3 CH1〜4（50kHz、ARR 200） | TIM4 CH1〜4（100kHz、ARR 100） |
 | 吸引ファン | TIM2 CH1 | TIM2 CH2 |
-| 制御周期 | TIM6（1kHz から） | TIM11（2kHz） |
+| 制御周期 | TIM11（2kHz。ToraNeko と同じ。KOGUMA.MkIIl は TIM6・1kHz） | TIM11（2kHz） |
 | 壁センサの待ち時間 | TIM8 | TIM3 |
 | ADC のチャンネル | IN9〜13 | IN2〜6 |
 | LED | 8 個＋壁の表示 4 個 | 7 個 |
