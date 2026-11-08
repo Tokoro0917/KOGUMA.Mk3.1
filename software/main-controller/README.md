@@ -84,8 +84,8 @@ software/main-controller/
         │   ├── robot_params.h    制御周期（2kHz）、電池の下限、タイヤ径、トレッド幅、ギア比
         │   ├── encoder_correction.h  エンコーダの角度の歪みを直す表
         │   ├── ctrl_gains.h      速度・角度の制御の係数、フェイルセーフのしきい値
-        │   ├── run_params.h      区画の大きさ（180mm）とスタートの位置（作った）。探索の動きの値はステップ7で足す
-        │   └── turn_params.h     最短走行のターンの値（作った。今は KOGUMA の 2000 の値を仮に入れた。ステップ10で計算し直す）
+        │   ├── run_params.h      区画の大きさ（180mm）、スタートの位置、探索の動き（吸引なし 500mm/s・吸引あり 1000mm/s）の値（作った）
+        │   └── turn_params.h     最短走行のターンの値（作った。KOGUMA の 2000 の速さ・角速度で、前距離・後距離を test_turn --calc で計算した。実機はステップ10）
         │
         ├── drv/                  ハードに直接触れる層（HAL を呼ぶのは、ここと sys/scheduler.c だけ）
         │   ├── encoder.c/.h      AS5047P ×2（SPI3）
@@ -175,10 +175,10 @@ ToraNeko.Mk3 では作り方を考えながら進めたが、KOGUMA.Mk3.1 では
 | 4 | IMU | `drv/imu.c` | CS 名 `ICM_NSS` → `IMU_CS`。軸の向きと符号を確かめる | `lsm6dsr.c` | **作った**（2026-11-08。ビルドは警告なし。実機はまだ。下の「ステップ1〜6の確かめ方」）。KOGUMA.MkIIl の角速度の倍率 1.01 も入れた |
 | 5 | モーター・吸引ファン | `drv/motor.c`, `drv/fan.c` | TIM3 の 4ch（ドライバの型番で IN の使い方が変わる。回路図で確認）、TIM2 CH1。電圧の上限 | `motor.c`（出力の部分） | **作った**（2026-11-08。ビルドは警告なし。実機はまだ。下の「ステップ1〜6の確かめ方」）。電圧の上限は KOGUMA.MkIIl に合わせた（モーターは電池の電圧まで、ファンは 13.4V） |
 | 6 | 壁センサ | `drv/wall.c`, `ctrl/wall_ctrl.c`, `ctrl/wall_dist.c` | ADC1 の 5ch（電池＋4）、LED 2 組。しきい値と距離の表は KOGUMA.MkIIl の値（`WallDistance.c`）から | `PL_sensor.c`, `Wallsensor.c`, `WallDistance.c` | **作った**（2026-11-08。実機はまだ）。AD 値の読み取り（`drv/wall.c`）、壁のあり・なしと前壁合わせ・横の壁のずれ（`ctrl/wall_ctrl.c`。しきい値は KOGUMA.MkIIl の `Wallsensor.c` の値）、壁までの距離（`ctrl/wall_dist.c`。KOGUMA.MkIIl の `WallDistance.c` の表と会場ごとの倍率。区画のまん中で 84mm。PC テスト `test_wall_dist`）。受光の並びと発光の組は ToraNeko と同じ。KOGUMA.MkIIl は値をならして（10 回の平均など）使っていたが、ToraNeko と同じく、ならさずに使う。実機の値を見て、しきい値とならすかを決め直す |
-| 7 | 速度・角度の制御、探索の動き、フェイルセーフの見つけ方 | `ctrl/odometry.c`, `ctrl/trajectory.c`, `ctrl/control.c`, `ctrl/run.c`, `ctrl/side_edge.c`, `config/ctrl_gains.h` | 制御方法は ToraNeko のまま（[KOGUMA_PORTING.md](KOGUMA_PORTING.md) の E2・E3）。タイヤ径・トレッド・ギア比・区画 180mm。係数とフェイルセーフのしきい値は KOGUMA の機体で決め直す（フィードフォワードの初めの値は KOGUMA のログのモデルから） | `motor.c`, `Move.c`, `SpeedPlan.c`, `PillarEdge.c`, `Failsafe.c` | **速度・角度の制御を作った**（2026-11-08。実機はまだ）：速さと距離（`ctrl/odometry.c`。1 カウントの距離は KOGUMA.MkIIl の計算と同じ）、台形の目標（`ctrl/trajectory.c`）、制御とフェイルセーフの見つけ方（`ctrl/control.c`）、壁切れの端（`ctrl/side_edge.c`。値は仮）、フェイルセーフ（`sys/failsafe.c`）、走行ログ（`sys/log.c`。1600 行）。どれも ToraNeko のまま。係数は `config/ctrl_gains.h` に KOGUMA.MkIIl の値から換算して入れた（換算の表はそのファイルの先頭）。PC テスト `test_trajectory`・`test_control`。確かめは下の「ステップ1〜7の確かめ方」の 9（直進）。**探索の動き（`ctrl/run.c`）はまだ** |
+| 7 | 速度・角度の制御、探索の動き、フェイルセーフの見つけ方 | `ctrl/odometry.c`, `ctrl/trajectory.c`, `ctrl/control.c`, `ctrl/run.c`, `ctrl/side_edge.c`, `config/ctrl_gains.h` | 制御方法は ToraNeko のまま（[KOGUMA_PORTING.md](KOGUMA_PORTING.md) の E2・E3）。タイヤ径・トレッド・ギア比・区画 180mm。係数とフェイルセーフのしきい値は KOGUMA の機体で決め直す（フィードフォワードの初めの値は KOGUMA のログのモデルから） | `motor.c`, `Move.c`, `SpeedPlan.c`, `PillarEdge.c`, `Failsafe.c` | **速度・角度の制御を作った**（2026-11-08。実機はまだ）：速さと距離（`ctrl/odometry.c`。1 カウントの距離は KOGUMA.MkIIl の計算と同じ）、台形の目標（`ctrl/trajectory.c`）、制御とフェイルセーフの見つけ方（`ctrl/control.c`）、壁切れの端（`ctrl/side_edge.c`。値は仮）、フェイルセーフ（`sys/failsafe.c`）、走行ログ（`sys/log.c`。1600 行）。どれも ToraNeko のまま。係数は `config/ctrl_gains.h` に KOGUMA.MkIIl の値から換算して入れた（換算の表はそのファイルの先頭）。PC テスト `test_trajectory`・`test_control`。確かめは下の「ステップ1〜7の確かめ方」の 10（直進）。**探索の動きも作った**（2026-11-08。`ctrl/run.c`。ToraNeko のまま、探索を吸引なし 500mm/s・吸引あり 1000mm/s の 2 とおりにした。値は KOGUMA.MkIIl の `Move.c` から `config/run_params.h` に入れ、スラロームの前距離・後距離は PC で計算した（`test/test_turn.c --calc`）。前壁補正・壁切れは測るだけ）。確かめは 11（スラローム） |
 | 8 | 迷路探索と最短経路 | `maze/*`, `test/` | `MAZE_SIZE` 16。テストの迷路を 16×16 に（KOGUMA.MkIIl の `mazes/` を使う） | `Maze.c` | **完了**（2026-11-08、PC テスト済み）。下の「ステップ8でやったこと」 |
 | 9 | 探索走行・モード・ログ・フェイルセーフ・保存 | `sys/*`, `drv/flash_memory.c`, `drv/switch.c`, `tools/viewer.html` | モードの割り当てを決める（MODES.md）。KOGUMA にしかない機能（全面探索、感度合わせなど）をどうするか（[KOGUMA_PORTING.md](KOGUMA_PORTING.md)） | `main.c`, `UI.c`, `LOG.c`, `Failsafe.c` | |
-| 10 | 最短走行（大回り・斜め）とターンの値 | `sys/shortest.c`, `sys/turn_test.c`, `config/turn_params.h`, `test/test_turn.c` | ターンの値は KOGUMA.MkIIl の 2000・2400 の値から。180mm の区画で `test_turn --calc` をやり直す | `Move.c`, `ShortParam.c` | |
+| 10 | 最短走行（大回り・斜め）とターンの値 | `sys/shortest.c`, `sys/turn_test.c`, `config/turn_params.h`, `test/test_turn.c` | ターンの値は KOGUMA.MkIIl の 2000・2400 の値から。180mm の区画で `test_turn --calc` をやり直す | `Move.c`, `ShortParam.c` | `test/test_turn.c` を持ってきて、2000 のターンの前距離・後距離を計算し直した（2026-11-08。角加速度は KOGUMA の w_ac × 2/π、大回り 180° の角速度は幅が 180mm になる値）。2400 の値、実機で足す分はまだ |
 
 ### ステップ1〜7の確かめ方（作者にお願いすること）
 
@@ -210,8 +210,12 @@ ToraNeko.Mk3 では作り方を考えながら進めたが、KOGUMA.Mk3.1 では
     - 止まったら、ケーブルを挿して S2 を押す。`RESULT straight target=540.0 mm encoder=... mm angle=... deg failsafe=...` の行と、走行ログ（`#BEGIN LOG` から `#END LOG` まで）が出る。ビューア（`tools/viewer.html`。ステップ9 で持ってくる）がまだないので、出た文字を全部そのまま Claude に貼る
     - **ものさしで、走った距離**（後ろの壁からお尻まで）**を測って**、`encoder=` の値と一緒に Claude に伝える（タイヤの直径と、1 カウントの距離が合っているかを確かめる）
     - `failsafe=` が 0 でなければ、途中で止めた（1 位置のずれ、2 角度のずれ、3 遅すぎ、4 進まない）。モーターかエンコーダの向きが逆のことが多い
-11. Claude に伝えること
-   - 6〜10 のとおりになったか（ならなかったら、どこが違ったか。シリアルに出た文字はそのまま貼る）
+11. スラローム（ステップ7。探索の動き）：10 の直進がまっすぐ走れてから。機体を**スタート区画に、お尻を後ろの壁に付けて置き**、スタートから北へ 2 区画、そこから右（東）へ 1 区画をあけておく（壁はあってもなくてもよい。横の壁があれば、壁に沿って走る補正が効く）。前センサに手を**2 秒以上**かざすと、ピッと高い音が鳴る。そこで手を離すと、1 秒後に走り出す
+    - 北へ 1 区画半ほど進み、500mm/s のまま右にスラロームで曲がって、右の区画（スタートを (0, 0) として (1, 2)）の**まん中**で止まり、ブザーが鳴る
+    - 止まった位置が、区画のまん中から前後・左右に何 mm ずれたか、向きが何度ずれたかを見る（ものさしで測れるとよい）。外にふくらんだか、内側に入ったか
+    - 止まったら、ケーブルを挿して S2 を押す。`RESULT slalom encoder=... mm (about 542) angle=... deg (-90) failsafe=...` の行と走行ログが出るので、そのまま Claude に貼る
+12. Claude に伝えること
+   - 6〜11 のとおりになったか（ならなかったら、どこが違ったか。シリアルに出た文字はそのまま貼る）
    - LED が光った**順番と場所**（基板のどの LED が LED1〜8・LEDF1〜4 か。ステップ9 で、モードの番号や電池の合図（外側の 4 個）を決めるのに使う）
    - ブザーの音の大きさ・高さ（KOGUMA.MkIIl と同じくらいか）
 

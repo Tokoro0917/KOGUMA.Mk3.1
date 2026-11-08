@@ -87,7 +87,7 @@ ToraNeko.Mk3 の `ctrl/`（`odometry.c`・`trajectory.c`・`control.c`・`wall_c
 | 項目 | KOGUMA.MkIIl | KOGUMA.Mk3.1（ToraNeko.Mk3 と同じ） |
 |---|---|---|
 | 目標の速さの作り方 | cos の形で上げ下げする（`motor.c` の `1 - cos(...)`）。縦横の直線は、減速を加速の 2 倍にしている | **台形**（加速度一定。`ctrl/trajectory.c`）。加速と減速は同じ加速度。PC テスト（`test_trajectory`）あり |
-| スラローム（ターン） | 前に進む速さは一定、角速度を cos の形で上げ下げ | 前に進む速さは一定、角速度を**台形**で上げ下げ（`trajectory_start_slalom()`）。形が変わるので、ターンの前距離・後距離は `test/test_turn.c --calc` で計算し直す（ステップ10） |
+| スラローム（ターン） | 前に進む速さは一定、角速度を cos の形で上げ下げ | 前に進む速さは一定、角速度を**台形**で上げ下げ（`trajectory_start_slalom()`）。形が変わるので、ターンの前距離・後距離は `test/test_turn.c --calc` で計算し直す（2026-11-08 に計算した）。台形の角加速度は KOGUMA の `w_ac` × 2/π（上げきるまでの時間と、そのあいだに曲がる角度が KOGUMA と同じになる） |
 | 速さの求め方 | エンコーダのカウントの差（左右の平均） | **2ms 前のカウントとの差**（`ctrl/odometry.c`。エンコーダの読みのぶれで速さがゆれないように。ToraNeko の 2026-11-03） |
 | 前に進む分の電圧 | フィードフォワード（`KT`・`KE` と、手合わせの `Aff`・`Bff`・`FF_offset`）＋ エンコーダの PID | **フィードフォワード（目標の速さ × FF_SPEED ＋ 目標の加速度 × FF_ACCEL ＋ 摩擦の分）＋ 速さのずれ × SPEED_KP ＋ 位置のずれ × SPEED_KI**（`ctrl/control.c`） |
 | 向きの分の電圧 | ジャイロの PID | **フィードフォワード（目標の角速度・角加速度を、タイヤ 1 つの速さ・加速度に直して同じ係数）＋ 角速度のずれ × OMEGA_KP ＋ 角度のずれ × ANGLE_KI** |

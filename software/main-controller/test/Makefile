@@ -5,6 +5,7 @@
 #   test_maze  迷路（App/maze/）。探索走行・最短走行（App/sys/explore.c・shortest.c）は、ステップ9・10 で足す
 #   test_wall_dist  壁センサの値を距離 [mm] に直す処理（App/ctrl/wall_dist.c）
 #   test_trajectory  目標の速さを作る処理（App/ctrl/trajectory.c）
+#   test_turn  探索のスラロームと最短走行のターンの前距離・後距離（./test_turn --calc で計算して貼る行を出す）
 #   test_control  制御のフェイルセーフの見つけ方と、吸引中の摩擦の分の電圧、斜めの補正、向きを戻す（App/ctrl/control.c。センサ・モーターは仮）
 
 APP_DIR = ../KOGUMA.Mk3.1/App
@@ -19,8 +20,9 @@ MAZE_SOURCES = \
 	$(APP_DIR)/maze/search.c \
 	$(APP_DIR)/maze/path.c
 
-test: test_maze test_wall_dist test_trajectory test_control
+test: test_maze test_wall_dist test_trajectory test_control test_turn
 	./test_trajectory
+	./test_turn
 	./test_control
 	./test_wall_dist
 	./test_maze
@@ -38,7 +40,10 @@ test_trajectory: test_trajectory.c $(APP_DIR)/ctrl/trajectory.c $(APP_HEADERS)
 test_control: test_control.c $(APP_DIR)/ctrl/control.c $(APP_DIR)/ctrl/trajectory.c $(APP_HEADERS)
 	$(CC) $(CFLAGS) -o $@ test_control.c $(APP_DIR)/ctrl/control.c $(APP_DIR)/ctrl/trajectory.c -lm
 
+test_turn: test_turn.c $(APP_DIR)/ctrl/trajectory.c $(APP_HEADERS)
+	$(CC) $(CFLAGS) -o $@ test_turn.c $(APP_DIR)/ctrl/trajectory.c -lm
+
 clean:
-	rm -f test_maze test_wall_dist test_trajectory test_control
+	rm -f test_maze test_wall_dist test_trajectory test_control test_turn
 
 .PHONY: test clean

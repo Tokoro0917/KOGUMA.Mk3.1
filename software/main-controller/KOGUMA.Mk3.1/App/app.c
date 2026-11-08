@@ -5,7 +5,7 @@
  * ToraNeko.Mk3 の App/app.c と同じ役目のファイル。ToraNeko.Mk3 と同じ順にステップを進め、そのたびに中身を足していく
  * （software/main-controller/README.md の「実装の進め方」）。
  *
- * ■ 今はステップ1〜6 の確かめ（実機で 1 つずつ確かめるための動き。ステップ9 でモードを選んで走らせる形にする）
+ * ■ 今はステップ1〜7 の確かめ（実機で 1 つずつ確かめるための動き。ステップ9 でモードを選んで走らせる形にする）
  *   起動したとき：
  *     - 各部品を使えるようにして、エンコーダの磁石の状態・IMU の名前・電池の電圧をシリアルに出し、ブザーを短く鳴らす
  *     - 制御周期（2kHz）の割り込みを始める（ここから、エンコーダ・IMU・壁センサを 0.5ms ごとに読む）
@@ -22,6 +22,10 @@
  *       STRAIGHT_SPEED_MM_S で走って止まる（横の壁の補正は入れない）。走り終わったら、走った距離・向きのずれ・
  *       フェイルセーフで止まったわけを覚えておき、次に S2 を押したときに、それと走行ログをシリアルに出す
  *       （走るときはケーブルを挿していないため。ToraNeko.Mk3 のモード6 No.1 と同じ考え方）
+ *     - 前センサに手を LONG_HAND_MS（2 秒）以上かざすと、ブザーが鳴る。そこで離すと、1 秒後にスラロームのテストをする
+ *       （ステップ7。ctrl/run.c の探索の動き、吸引なし 500mm/s）：スタート区画から北へ 1 区画まっすぐ進み、
+ *       右にスラロームで曲がって、その区画のまん中で止まる（スタート区画を (0, 0) として (1, 2) のまん中）。
+ *       結果の出し方は直進のテストと同じ
  * ステップ9 でモード（sys/mode.c）を持ってきたら、この確かめの動きは、ToraNeko と同じくモードの中に移す。
  */
 #include "app.h"
@@ -32,6 +36,7 @@
 #include "config/robot_params.h"
 #include "ctrl/control.h"
 #include "ctrl/odometry.h"
+#include "ctrl/run.h"
 #include "ctrl/trajectory.h"
 #include "ctrl/wall_ctrl.h"
 #include "drv/buzzer.h"
@@ -62,6 +67,8 @@
 #define STRAIGHT_LOG_INTERVAL_MS 2       /* 走行ログを残す間隔 [ms] */
 #define START_DELAY_MS          1000     /* 手を離してから走り出すまで待つ時間 [ms]（ToraNeko と同じ） */
 #define SETTLE_MS               100      /* 止まってから制御を続けて待つ時間 [ms]（ぴたりと止めるため） */
+#define LONG_HAND_MS            2000     /* 前センサにこれより長く手をかざしたら、スラロームのテストにする [ms] */
+#define LONG_HAND_BEEP_HZ       1000     /* スラロームのテストになったことを知らせる音の高さ [Hz] */
 
 /* シリアルに出す文字は英数字だけにする（日本語は、表示するソフトによって文字化けするため。ToraNeko.Mk3 と同じ） */
 
@@ -70,10 +77,13 @@ static uint32_t s_print_last_ms = 0;  /* 最後にシリアルに出した時刻
 static uint8_t s_led_num = 1;         /* 次に点ける表示 LED の番号（1〜8） */
 static bool s_motor_on = false;       /* 今、モーターに電圧をかけているか */
 static bool s_hand_seen = false;      /* 前センサに手がかざされたのを見たか（離したら走る） */
-static bool s_result_ready = false;   /* 直進のテストの結果があって、まだ出していないか */
-static float s_result_distance_mm = 0.0f;  /* 直進のテストで、エンコーダで測った走った距離 [mm] */
-static float s_result_angle_deg = 0.0f;    /* 直進のテストで、ジャイロで測った向きの変わった量 [deg] */
-static int s_result_failsafe = 0;          /* 直進のテストで、フェイルセーフで止まったわけ（ctrl/control.h の番号。0 なら止まっていない） */
+static uint32_t s_hand_start_ms = 0;  /* 手がかざされた時刻 [ms] */
+static bool s_long_hand = false;      /* 手が LONG_HAND_MS より長くかざされたか（離したらスラロームのテスト） */
+static bool s_result_ready = false;   /* テストの結果があって、まだ出していないか */
+static bool s_result_is_slalom = false;    /* その結果がスラロームのテストか（false なら直進のテスト） */
+static float s_result_distance_mm = 0.0f;  /* テストで、エンコーダで測った走った距離 [mm] */
+static float s_result_angle_deg = 0.0f;    /* テストで、ジャイロで測った向きの変わった量 [deg] */
+static int s_result_failsafe = 0;          /* テストで、フェイルセーフで止まったわけ（ctrl/control.h の番号。0 なら止まっていない） */
 
 /* 電池の電圧を読んで、シリアルに出す。下限より低ければ知らせる（ここでは止めない。止めるのはステップ9 で作る） */
 static void check_battery(void)
@@ -160,39 +170,85 @@ static void run_straight_test(void)
   s_result_distance_mm = odometry_get_distance_mm() - start_distance_mm;
   s_result_angle_deg = imu_get_angle_deg() - start_angle_deg;
   s_result_failsafe = control_get_failsafe_reason();
+  s_result_is_slalom = false;
   s_result_ready = true;
   buzzer_beep(BOOT_BEEP_HZ, BOOT_BEEP_MS);  /* 走り終わった合図 */
 }
 
-/* 前センサに手をかざして離したら、直進のテストをする */
-static void update_straight_test(void)
+/* スラロームのテストをする（ステップ7）。探索の動き（ctrl/run.c）で、北へ 1 区画進んでから右に曲がり、
+ * その区画のまん中で止まる。走り終わるか、フェイルセーフで止まるまで戻らない */
+static void run_slalom_test(void)
+{
+  timebase_wait_ms(START_DELAY_MS);
+  float start_distance_mm = odometry_get_distance_mm();
+  float start_angle_deg = imu_get_angle_deg();
+  failsafe_clear();
+
+  run_search_set_suction(false);  /* 吸引なしの探索の値（500mm/s） */
+  run_search_start();             /* ジャイロのゼロ点を測り直し、制御と走行ログを始めて、(0, 1) の入口へ */
+  run_search_straight();          /* (0, 2) の入口へ */
+  run_search_turn_right();        /* 右に曲がって (1, 2) の入口へ */
+  run_search_stop_at_center();    /* (1, 2) のまん中で止まる */
+  control_stop();                 /* フェイルセーフで止まったときも、制御を止める */
+  log_stop();
+  motor_stop();
+
+  s_result_distance_mm = odometry_get_distance_mm() - start_distance_mm;
+  s_result_angle_deg = imu_get_angle_deg() - start_angle_deg;
+  s_result_failsafe = control_get_failsafe_reason();
+  s_result_is_slalom = true;
+  s_result_ready = true;
+  buzzer_beep(BOOT_BEEP_HZ, BOOT_BEEP_MS);  /* 走り終わった合図 */
+}
+
+/* 前センサに手をかざして離したら、テストをする。LONG_HAND_MS より長くかざしていたらスラロームのテスト、
+ * 短ければ直進のテスト。長くなったところでブザーを鳴らして知らせる */
+static void update_hand_tests(void)
 {
   if (wall_ctrl_is_hand_front()) {
-    s_hand_seen = true;
+    if (!s_hand_seen) {
+      s_hand_seen = true;
+      s_hand_start_ms = timebase_get_ms();
+      s_long_hand = false;
+    }
+    if (!s_long_hand && timebase_get_ms() - s_hand_start_ms >= LONG_HAND_MS) {
+      s_long_hand = true;
+      buzzer_beep(LONG_HAND_BEEP_HZ, BOOT_BEEP_MS);
+    }
     return;
   }
   if (s_hand_seen) {
     s_hand_seen = false;
-    run_straight_test();
+    if (s_long_hand) {
+      run_slalom_test();
+    } else {
+      run_straight_test();
+    }
   }
 }
 
-/* 直進のテストの結果と走行ログをシリアルに出す（S2 を押したとき） */
-static void print_straight_result(void)
+/* テストの結果と走行ログをシリアルに出す（S2 を押したとき）。
+ * スラロームのテストの距離の目安：発進 114mm（24 + 90）+ 1 区画 180mm + 前距離・スラローム・後距離 + まん中まで 90mm で、約 542mm */
+static void print_test_result(void)
 {
-  printf("RESULT straight target=%.1f mm encoder=%.1f mm angle=%.2f deg failsafe=%d (0 none, 1 position, 2 angle, 3 slow, 4 stall)\r\n",
-         STRAIGHT_DISTANCE_MM, s_result_distance_mm, s_result_angle_deg, s_result_failsafe);
+  if (s_result_is_slalom) {
+    printf("RESULT slalom encoder=%.1f mm (about 542) angle=%.2f deg (-90) failsafe=%d (0 none, 1 position, 2 angle, 3 slow, 4 stall)\r\n",
+           s_result_distance_mm, s_result_angle_deg, s_result_failsafe);
+  } else {
+    printf("RESULT straight target=%.1f mm encoder=%.1f mm angle=%.2f deg failsafe=%d (0 none, 1 position, 2 angle, 3 slow, 4 stall)\r\n",
+           STRAIGHT_DISTANCE_MM, s_result_distance_mm, s_result_angle_deg, s_result_failsafe);
+  }
   log_print();
   s_result_ready = false;
 }
 
 /* スイッチを押しているあいだだけ、モーターに電圧をかける（ステップ5）。
- * 直進のテストの結果がまだ出ていなければ、押したときに結果を出す（そのときはモーターは回さない） */
+ * テストの結果がまだ出ていなければ、押したときに結果を出す（そのときはモーターは回さない） */
 static void update_motor_test(void)
 {
   bool pressed = switch_is_pressed();
   if (pressed && s_result_ready) {
-    print_straight_result();
+    print_test_result();
     while (switch_is_pressed()) {
       /* 離すまで待つ（続けてモーターが回らないように） */
     }
@@ -242,7 +298,7 @@ void app_loop(void)
   }
 
   update_motor_test();
-  update_straight_test();
+  update_hand_tests();
 
   if (now_ms - s_print_last_ms >= PRINT_STEP_MS) {
     s_print_last_ms = now_ms;
