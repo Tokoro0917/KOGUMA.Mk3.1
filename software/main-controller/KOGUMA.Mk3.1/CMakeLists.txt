@@ -82,7 +82,9 @@ set(APP_SOURCES
     App/sys/sensor_noise.c
     App/sys/sensor_record.c
     App/sys/sensor_view.c
+    App/sys/shortest.c
     App/sys/suction.c
+    App/sys/turn_test.c
     App/sys/ui.c
 )
 

@@ -5,8 +5,9 @@
  * ■ もとにしたもの
  * ToraNeko.Mk3 の App/sys/mode.c（ecd8e10）。KOGUMA.Mk3.1 で変えたところ：
  *   - 探索（モード0）は、KOGUMA.MkIIl のモード0 と同じ番号にした（No.1〜7。No.8〜12 は最短走行を続けて走るので、ステップ10）
- *   - まだ作っていないモード（最短走行・ターンの調整）を外した。
- *     作ったときに、ToraNeko.Mk3 と同じ番号で足す（最短走行とターンの調整はステップ10）
+ *   - 最短走行（モード1）は No.1〜9（No.4〜9 は KOGUMA.MkIIl のモード1 No.4〜9 と同じ値。config/run_params.h）
+ *   - ターンの調整（モード3）は、組 2000 が No.1〜7、組 2400 が No.9〜15。斜めの直進のテスト（ToraNeko.Mk3 のモード3 No.8・9）は
+ *     モード4 No.2・3 に移した
  *   - KOGUMA.Mk3.1 で足したモード：モード2 No.3（吸引探索のスラローム 90°）、モード4 No.12（直線の加速の限界テスト）、
  *     モード5 No.7（部品の確かめ）、モード5 No.8（吸引のときのセンサのノイズ。B7）、モード6 No.2（モーターの向きの確かめ）
  *
@@ -24,12 +25,16 @@
  * ■ 今あるモード（ほかのモードは、中身を作ったときにここに足す）
  *   モード0 No.1〜7  探索（No.1 往復、2 エセ全面探索、3 片道 は吸引なし 500mm/s。No.4 往復、5 エセ全面探索、
  *                    6 未知壁探索、7 未知壁探索＋既知区間加速 は吸引 1000mm/s。KOGUMA.MkIIl と同じ番号）
+ *   モード1 No.1〜9  最短走行（No.1 は小回りだけ、No.2〜9 は大回り・斜め。決定したときに道がなければ「できなかった」）
  *   モード2 No.1     スラローム 90°（吸引なしの探索の速さで左に曲がり、左の区画のまん中で止まる）
  *   モード2 No.2     U ターン（行き止まりで止まり、前壁合わせ、180°、戻って止まる）
  *   モード2 No.3     吸引探索のスラローム 90°（吸引して、吸引探索の速さで。No.1 と同じ動き）
  *   モード2 No.4     その場 180° 旋回（左に回って止まる。旋回の制御の係数を合わせる）
  *   モード2 No.5     壁合わせだけ（前の壁で位置と向きを直す）
+ *   モード3 No.1〜7  最短走行のターンを 1 つずつ（組 2000。大回り 90°・180°、斜め入り 45°・135°、斜め出 45°・135°、V90°。左だけ）
+ *   モード3 No.9〜15 同じく、組 2400
  *   モード4 No.1     吸引なしの加速度テスト
+ *   モード4 No.2・3  斜めの直進のテスト（No.2 は斜めの補正なし、No.3 はあり）
  *   モード4 No.4〜11 吸引ありの加速度テスト
  *   モード4 No.12    直線の加速の限界テスト（KOGUMA.MkIIl のモード6 No.0 と同じ走り）
  *   モード5 No.1     センサ値の表示（スイッチを押すと終わる）
@@ -62,6 +67,8 @@
 #include "sys/sensor_noise.h"
 #include "sys/sensor_record.h"
 #include "sys/sensor_view.h"
+#include "sys/shortest.h"
+#include "sys/turn_test.h"
 #include "sys/ui.h"
 
 /* 選んでいるモードと No.（走り終わっても、そのまま残す） */
@@ -99,6 +106,21 @@ bool mode_has_action(int mode, int number)
     }
     return false;
   }
+  if (mode == 1) {
+    if (number >= 1 && number <= 9) {
+      return true;  /* 最短走行 */
+    }
+    return false;
+  }
+  if (mode == 3) {
+    if (number >= 1 && number <= 7) {
+      return true;  /* 最短走行のターン（組 2000） */
+    }
+    if (number >= 9 && number <= 15) {
+      return true;  /* 最短走行のターン（組 2400） */
+    }
+    return false;
+  }
   if (mode == 2) {
     if (number >= 1 && number <= 5) {
       return true;  /* スラローム 90°、U ターン、吸引探索のスラローム 90°、その場 180° 旋回、壁合わせだけ */
@@ -106,8 +128,8 @@ bool mode_has_action(int mode, int number)
     return false;
   }
   if (mode == 4) {
-    if (number == 1) {
-      return true;  /* 吸引なしの加速度テスト */
+    if (number >= 1 && number <= 3) {
+      return true;  /* 吸引なしの加速度テスト、斜めの直進のテスト（補正なし・あり） */
     }
     if (number >= 4 && number <= 12) {
       return true;  /* 吸引ありの加速度テスト（No.12 は直線の加速の限界テスト） */
@@ -147,7 +169,7 @@ bool mode_has_action(int mode, int number)
     }
     return false;
   }
-  return false;  /* ほかのモード（最短走行・ターンの調整）は、まだ作っていない */
+  return false;
 }
 
 /* value に steps を足して、0〜(count - 1) の中で一周させる（count - 1 の次は 0、0 の前は count - 1） */
@@ -236,6 +258,26 @@ static void run_explore(int number)
 }
 
 /* ---------------------------------------------------------------------------
+ * モード1：最短走行
+ * ------------------------------------------------------------------------- */
+
+/* 最短走行をする（No. で走り方と速さを選ぶ） */
+static void run_shortest(int number)
+{
+  shortest_result_t result = shortest_run(number, goal_get_x(), goal_get_y());
+
+  if (result == SHORTEST_RESULT_DONE) {
+    ui_signal_ok();  /* ゴールで止まった。スタートへは手で戻す */
+  } else if (result == SHORTEST_RESULT_FAILSAFE) {
+    /* 8 個全部を点滅させて、スイッチが押されるまで待ち、フェイルセーフを解除する */
+    ui_wait_failsafe_reset();
+    failsafe_clear();
+  } else {
+    ui_signal_error();  /* 道がない（決定したときに調べているので、ふつうは起きない） */
+  }
+}
+
+/* ---------------------------------------------------------------------------
  * モード7：設定
  * ------------------------------------------------------------------------- */
 
@@ -308,6 +350,14 @@ static void run_selected(void)
 {
   if (s_mode == 0) {
     run_explore(s_number);
+  } else if (s_mode == 1) {
+    run_shortest(s_number);
+  } else if (s_mode == 3) {
+    turn_test_run(s_number);
+  } else if (s_mode == 4 && s_number == 2) {
+    turn_test_run_diag(false);
+  } else if (s_mode == 4 && s_number == 3) {
+    turn_test_run_diag(true);
   } else if (s_mode == 2 && s_number == 1) {
     adjust_slalom_90();
   } else if (s_mode == 2 && s_number == 2) {
@@ -348,7 +398,9 @@ void mode_run_once(void)
 {
   select_mode();
 
-  if (s_mode == 5 && s_number == 1) {
+  if (s_mode == 1 && !shortest_has_route(s_number, goal_get_x(), goal_get_y())) {
+    ui_signal_error();  /* 最短走行で、スタートからゴールへの道がない。走らずに選び直す */
+  } else if (s_mode == 5 && s_number == 1) {
     sensor_view_run();  /* スタート待ちをしない */
   } else if (s_mode == 5 && s_number == 3) {
     sensor_view_distance_run();  /* スタート待ちをしない（前センサの値を見たいので） */

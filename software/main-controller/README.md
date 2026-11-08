@@ -181,7 +181,7 @@ ToraNeko.Mk3 では作り方を考えながら進めたが、KOGUMA.Mk3.1 では
 | 7 | 速度・角度の制御、探索の動き、フェイルセーフの見つけ方 | `ctrl/odometry.c`, `ctrl/trajectory.c`, `ctrl/control.c`, `ctrl/run.c`, `ctrl/side_edge.c`, `config/ctrl_gains.h` | 制御方法は ToraNeko のまま（[KOGUMA_PORTING.md](KOGUMA_PORTING.md) の E2・E3）。タイヤ径・トレッド・ギア比・区画 180mm。係数とフェイルセーフのしきい値は KOGUMA の機体で決め直す（フィードフォワードの初めの値は KOGUMA のログのモデルから） | `motor.c`, `Move.c`, `SpeedPlan.c`, `PillarEdge.c`, `Failsafe.c` | **速度・角度の制御を作った**（2026-11-08。実機はまだ）：速さと距離（`ctrl/odometry.c`。1 カウントの距離は KOGUMA.MkIIl の計算と同じ）、台形の目標（`ctrl/trajectory.c`）、制御とフェイルセーフの見つけ方（`ctrl/control.c`）、壁切れの端（`ctrl/side_edge.c`。値は仮）、フェイルセーフ（`sys/failsafe.c`）、走行ログ（`sys/log.c`。1600 行）。どれも ToraNeko のまま。係数は `config/ctrl_gains.h` に KOGUMA.MkIIl の値から換算して入れた（換算の表はそのファイルの先頭）。PC テスト `test_trajectory`・`test_control`。確かめは下の「確かめ方」の 11（直進）。**探索の動きも作った**（2026-11-08。`ctrl/run.c`。ToraNeko のまま、探索を吸引なし 500mm/s・吸引あり 1000mm/s の 2 とおりにした。値は KOGUMA.MkIIl の `Move.c` から `config/run_params.h` に入れ、スラロームの前距離・後距離は PC で計算した（`test/test_turn.c --calc`）。前壁補正・壁切れは測るだけ）。確かめは 12（スラローム） |
 | 8 | 迷路探索と最短経路 | `maze/*`, `test/` | `MAZE_SIZE` 16。テストの迷路を 16×16 に（KOGUMA.MkIIl の `mazes/` を使う） | `Maze.c` | **完了**（2026-11-08、PC テスト済み）。下の「ステップ8でやったこと」 |
 | 9 | 探索走行・モード・ログ・フェイルセーフ・保存 | `sys/*`, `drv/flash_memory.c`, `drv/switch.c`, `tools/viewer.html` | モードの割り当てを決める（MODES.md）。KOGUMA にしかない機能（全面探索、感度合わせなど）をどうするか（[KOGUMA_PORTING.md](KOGUMA_PORTING.md)） | `main.c`, `UI.c`, `LOG.c`, `Failsafe.c` | **モードの土台を作った**（2026-11-08。実機はまだ）：操作と合図（`sys/ui.c`。LED 8 個とブザー）、モード選択（`sys/mode.c`）、ゴール（`sys/goal.c`）、Flash への保存（`sys/flash.c`・`drv/flash_memory.c`）、ログ出力（`sys/output.c`）、調整の動き（`sys/adjust.c`）、センサの表示と記録（`sys/sensor_view.c`・`sensor_record.c`）、吸引（`sys/suction.c`）。どれも ToraNeko のまま、LED の並びと音、区画の大きさを KOGUMA に合わせた。モードは下の「モード一覧」と [MODES.md](MODES.md)。確かめ方は下の「確かめ方」。**探索も作った**（`sys/explore.c`。モード0 No.1〜7。ToraNeko の探索に、吸引探索とエセ全面探索を足した。PC テスト `test_maze` の [9] で、仮の機体で走らせて確かめた）。**壁切れのテスト（`sys/edge_test.c`）、エンコーダの歪み（`sys/encoder_cal.c`）、吸引のときのセンサのノイズ（`sys/sensor_noise.c`。B7）、ビューア（`tools/viewer.html`）・ログの残し方（`logs/README.md`・`tools/push_logs.sh`）・壁までの距離の表を作る道具（`tools/wall_table.py`）も作った**（2026-11-08）。モード0 No.8〜12 はステップ10 |
-| 10 | 最短走行（大回り・斜め）とターンの値 | `sys/shortest.c`, `sys/turn_test.c`, `config/turn_params.h`, `test/test_turn.c` | ターンの値は KOGUMA.MkIIl の 2000・2400 の値から。180mm の区画で `test_turn --calc` をやり直す | `Move.c`, `ShortParam.c` | `test/test_turn.c` を持ってきて、2000 のターンの前距離・後距離を計算し直した（2026-11-08。角加速度は KOGUMA の w_ac × 2/π、大回り 180° の角速度は幅が 180mm になる値）。2400 の値、実機で足す分はまだ |
+| 10 | 最短走行（大回り・斜め）とターンの値 | `sys/shortest.c`, `sys/turn_test.c`, `config/turn_params.h`, `test/test_turn.c` | ターンの値は KOGUMA.MkIIl の 2000・2400 の値から。180mm の区画で `test_turn --calc` をやり直す | `Move.c`, `ShortParam.c` | **作った**（2026-11-08。実機はまだ）：`test/test_turn.c` で、組 2000・組 2400 のターンの前距離・後距離を計算した（角加速度は KOGUMA の w_ac × 2/π、大回り 180° の角速度は幅が 180mm になる値）。最短走行（`sys/shortest.c`。モード1 No.1〜9。No.4〜9 は KOGUMA.MkIIl と同じ値）、ターンの調整（`sys/turn_test.c`。モード3）、未知壁探索で最短走行の組ごとの経路を見る（B15。`sys/explore.c`）。PC テスト `test_maze` の [10] で、仮の機体で No.1〜9 を走らせた。**モード0 No.8〜12（探索のあとに続けて最短走行）はこのあと**。実機で足す前距離・後距離はまだ |
 
 ### ステップ1〜7・9の確かめ方（作者にお願いすること）
 
@@ -235,14 +235,18 @@ ToraNeko.Mk3 では作り方を考えながら進めたが、KOGUMA.Mk3.1 では
 |---|---|---|---|
 | 0 | 1〜7 | 探索（KOGUMA.MkIIl のモード0 と同じ番号。No.1〜3 は吸引なし、No.4〜7 は吸引あり） | 作った |
 | 0 | 8〜12 | 探索のあとに続けて最短走行、既知区間を斜めで | ステップ10 |
-| 1 | — | 最短走行 | ステップ10 |
+| 1 | 1 | 最短走行（小回りだけ、吸引なし。道を確かめる） | 作った |
+| 1 | 2・3 | 最短走行（大回り・斜め、直進の最高速 ＝ ターンの速さ。組 2000・2400。KOGUMA.MkIIl のモード3 No.1・2） | 作った |
+| 1 | 4〜9 | 最短走行（KOGUMA.MkIIl のモード1 No.4〜9 と同じ値） | 作った |
 | 2 | 1 | スラローム 90°（吸引なし 500mm/s） | 作った |
 | 2 | 2 | U ターン | 作った |
 | 2 | 3 | 吸引探索のスラローム 90°（吸引 5.5V、1000mm/s） | 作った（KOGUMA.Mk3.1 で足した） |
 | 2 | 4 | その場 180° 旋回 | 作った |
 | 2 | 5 | 壁合わせだけ | 作った |
-| 3 | — | 最短走行のターン調整 | ステップ10 |
+| 3 | 1〜7 | 最短走行のターン調整（組 2000） | 作った |
+| 3 | 9〜15 | 最短走行のターン調整（組 2400） | 作った |
 | 4 | 1 | 吸引なしの加速度テスト | 作った |
+| 4 | 2・3 | 斜めの直進のテスト（補正なし・あり。ToraNeko のモード3 No.8・9） | 作った |
 | 4 | 4〜11 | 吸引ありの加速度テスト（8000〜40000mm/s²） | 作った |
 | 4 | 12 | 直線の加速の限界テスト（KOGUMA.MkIIl のモード6 No.0） | 作った（B16） |
 | 5 | 1 | センサ値の表示 | 作った |

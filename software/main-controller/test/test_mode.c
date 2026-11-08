@@ -72,6 +72,8 @@
 #include "sys/sensor_noise.h"
 #include "sys/sensor_record.h"
 #include "sys/sensor_view.h"
+#include "sys/shortest.h"
+#include "sys/turn_test.h"
 #include "sys/ui.h"
 
 /* ---------------------------------------------------------------------------
@@ -567,9 +569,57 @@ void encoder_cal_run(void)
   s_run_time_ms = s_now_ms;
 }
 
+/* 最短走行（モード1）・ターンの調整（モード3）・斜めの直進のテスト（モード4 No.2・3）：走らずに、呼ばれた回数・No.・時刻を覚える */
+static bool s_shortest_route = true;   /* 最短走行の道があることにするか */
+static int s_shortest_count = 0;
+static int s_shortest_number = 0;
+static int s_turn_test_count = 0;
+static int s_turn_test_number = 0;
+static int s_diag_test_count = 0;
+static bool s_diag_test_correction = false;
+
+bool shortest_has_route(int number, int goal_x, int goal_y)
+{
+  (void)number;
+  (void)goal_x;
+  (void)goal_y;
+  return s_shortest_route;
+}
+
+shortest_result_t shortest_run(int number, int goal_x, int goal_y)
+{
+  (void)goal_x;
+  (void)goal_y;
+  s_shortest_count = s_shortest_count + 1;
+  s_shortest_number = number;
+  s_run_time_ms = s_now_ms;
+  return SHORTEST_RESULT_DONE;
+}
+
+void turn_test_run(int number)
+{
+  s_turn_test_count = s_turn_test_count + 1;
+  s_turn_test_number = number;
+  s_run_time_ms = s_now_ms;
+}
+
+void turn_test_run_diag(bool use_correction)
+{
+  s_diag_test_count = s_diag_test_count + 1;
+  s_diag_test_correction = use_correction;
+  s_run_time_ms = s_now_ms;
+}
+
 /* 上の仮の記録を 0 に戻す */
 static void reset_step9_tests(void)
 {
+  s_shortest_route = true;
+  s_shortest_count = 0;
+  s_shortest_number = 0;
+  s_turn_test_count = 0;
+  s_turn_test_number = 0;
+  s_diag_test_count = 0;
+  s_diag_test_correction = false;
   s_edge_test_count = 0;
   s_edge_test_number = 0;
   s_noise_count = 0;
@@ -875,12 +925,15 @@ static void test_has_action(void)
   printf("[5] 決定できる番号\n");
   check(!mode_has_action(0, 0) && mode_has_action(0, 1) && mode_has_action(0, 7) && !mode_has_action(0, 8),
         "モード0（探索）は No.1〜7 だけ決定できる（No.8〜12 は最短走行を作ってから）");
-  check(!mode_has_action(1, 1) && !mode_has_action(3, 1),
-        "モード1（最短走行）・モード3（ターンの調整）は、まだ決定できない");
+  check(!mode_has_action(1, 0) && mode_has_action(1, 1) && mode_has_action(1, 9) && !mode_has_action(1, 10),
+        "モード1（最短走行）は No.1〜9 だけ決定できる");
+  check(mode_has_action(3, 1) && mode_has_action(3, 7) && !mode_has_action(3, 8) && mode_has_action(3, 9) &&
+            mode_has_action(3, 15) && !mode_has_action(3, 0),
+        "モード3（ターンの調整）は No.1〜7（組 2000）と No.9〜15（組 2400）を決定できて、No.8 はできない");
   check(!mode_has_action(2, 0) && mode_has_action(2, 1) && mode_has_action(2, 5) && !mode_has_action(2, 6),
         "モード2 は No.1〜5 だけ決定できる");
-  check(mode_has_action(4, 1) && !mode_has_action(4, 2) && !mode_has_action(4, 3),
-        "モード4 は No.1 を決定できて、No.2・3 はできない");
+  check(mode_has_action(4, 1) && mode_has_action(4, 2) && mode_has_action(4, 3),
+        "モード4 は No.1（吸引なしの加速度テスト）と No.2・3（斜めの直進のテスト）を決定できる");
   check(mode_has_action(4, 4) && mode_has_action(4, 11) && mode_has_action(4, 12) && !mode_has_action(4, 13),
         "モード4 は No.4〜12 を決定できて、No.13 はできない");
   check(mode_has_action(5, 1) && mode_has_action(5, 2) && mode_has_action(5, 3) && mode_has_action(5, 7),
@@ -1242,6 +1295,63 @@ static void test_step9_tools(void)
   check(s_noise_print_count == 1 && s_noise_print_output_count == 0, "ログ出力で、センサのノイズの表を、迷路と走行ログより前に出す");
 }
 
+/* 最短走行（モード1）・ターンの調整（モード3）・斜めの直進のテスト（モード4 No.2・3）が、選んだ No. で呼ばれる */
+static void test_step10_modes(void)
+{
+  printf("[6] 最短走行・ターンの調整・斜めの直進のテスト\n");
+  bool shortest_ok = true;
+  for (int number = 1; number <= 9; number++) {
+    reset_world();
+    reset_step9_tests();
+    mode_init();
+    select_and_start(1, number);
+    mode_run_once();
+    if (s_shortest_count != 1 || s_shortest_number != number || s_run_time_ms < 2000 + 1000) {
+      shortest_ok = false;
+    }
+  }
+  check(shortest_ok, "モード1 No.1〜9 で、最短走行が選んだ No. で 1 回呼ばれる（スタート待ちのあと）");
+
+  /* 道がないときは、決定してすぐ「できなかった」を出し、スタート待ちをせずに選び直す */
+  reset_world();
+  reset_step9_tests();
+  s_shortest_route = false;
+  mode_init();
+  rotate_left_at(100, 1);
+  rotate_right_at(100, 5);
+  press_switch_at(500);
+  mode_run_once();
+  check(s_shortest_count == 0, "道がなければ、最短走行を呼ばない");
+  check_leds_at(850, "11000011", "道がなければ、決定（510〜810ms に点滅）のあとすぐ外側の 4 個を速く点滅させる（できなかった）");
+
+  bool turn_ok = true;
+  int numbers[3] = {1, 7, 15};
+  for (int i = 0; i < 3; i++) {
+    reset_world();
+    reset_step9_tests();
+    mode_init();
+    select_and_start(3, numbers[i]);
+    mode_run_once();
+    if (s_turn_test_count != 1 || s_turn_test_number != numbers[i]) {
+      turn_ok = false;
+    }
+  }
+  check(turn_ok, "モード3 No.1・7・15 で、ターンの調整が選んだ No. で呼ばれる");
+
+  reset_world();
+  reset_step9_tests();
+  mode_init();
+  select_and_start(4, 2);
+  mode_run_once();
+  check(s_diag_test_count == 1 && !s_diag_test_correction, "モード4 No.2 で、斜めの補正なしの斜めの直進のテスト");
+  reset_world();
+  reset_step9_tests();
+  mode_init();
+  select_and_start(4, 3);
+  mode_run_once();
+  check(s_diag_test_count == 1 && s_diag_test_correction, "モード4 No.3 で、斜めの補正ありの斜めの直進のテスト");
+}
+
 /* その場 180° 旋回（モード2 No.4）は、スタート待ちのあとに始まる */
 static void test_pivot(void)
 {
@@ -1457,6 +1567,7 @@ int main(void)
   test_explore_numbers();
   test_explore_results();
   test_step9_tools();
+  test_step10_modes();
   test_straight();
   test_pivot();
   test_slalom();

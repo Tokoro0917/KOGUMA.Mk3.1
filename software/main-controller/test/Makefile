@@ -2,7 +2,7 @@
 #   make        ビルドしてテストを実行する
 #   make clean  ビルドしたものを消す
 #
-#   test_maze  迷路（App/maze/）と探索走行（App/sys/explore.c）。最短走行（App/sys/shortest.c）は、ステップ10 で足す
+#   test_maze  迷路（App/maze/）と探索走行（App/sys/explore.c）、最短走行（App/sys/shortest.c）
 #   test_wall_dist  壁センサの値を距離 [mm] に直す処理（App/ctrl/wall_dist.c）
 #   test_trajectory  目標の速さを作る処理（App/ctrl/trajectory.c）
 #   test_turn  探索のスラロームと最短走行のターンの前距離・後距離（./test_turn --calc で計算して貼る行を出す）
@@ -22,7 +22,8 @@ MAZE_SOURCES = \
 	$(APP_DIR)/maze/maze_map.c \
 	$(APP_DIR)/maze/search.c \
 	$(APP_DIR)/maze/path.c \
-	$(APP_DIR)/sys/explore.c
+	$(APP_DIR)/sys/explore.c \
+	$(APP_DIR)/sys/shortest.c
 
 MODE_SOURCES = \
 	$(APP_DIR)/sys/mode.c \

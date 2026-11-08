@@ -58,6 +58,8 @@
 #include "sys/explore.h"
 #include "sys/failsafe.h"
 #include "sys/flash.h"
+#include "sys/goal.h"
+#include "sys/shortest.h"
 #include "sys/suction.h"
 #include "sys/ui.h"
 #include "config/run_params.h"
@@ -2870,6 +2872,31 @@ static int best_route_cost(void)
   return dijkstra_get_route_cost();
 }
 
+/* 最短走行の No.number の速さで走る時間で比べたときの、全部の壁を知っているときの最短経路のコスト（B15） */
+static int best_route_cost_for(int number)
+{
+  copy_true_maze_to_map();
+  shortest_set_route_cost(number);
+  int cost = -1;
+  if (dijkstra_find_route(s_goal_x, s_goal_y, s_goal_width, s_goal_height, true)) {
+    cost = dijkstra_get_route_cost();
+  }
+  dijkstra_set_step_cost();
+  return cost;
+}
+
+/* 同じく、今の地図（探索で見た壁）での最短経路のコスト（まだ見ていない壁は「ある」とみなす） */
+static int recorded_route_cost_for(int number)
+{
+  shortest_set_route_cost(number);
+  int cost = -1;
+  if (dijkstra_find_route(s_goal_x, s_goal_y, s_goal_width, s_goal_height, true)) {
+    cost = dijkstra_get_route_cost();
+  }
+  dijkstra_set_step_cost();
+  return cost;
+}
+
 /* 今の地図（探索で見た壁）での最短経路のコスト */
 static int recorded_route_cost(void)
 {
@@ -2923,6 +2950,8 @@ static bool no_cell_left_to_visit(void)
 static bool explore_and_check(explore_type_t type, bool suction, bool verbose)
 {
   int best_cost = best_route_cost();
+  int best_set1_cost = best_route_cost_for(SHORTEST_PLAN_SET1_NUMBER);
+  int best_set2_cost = best_route_cost_for(SHORTEST_PLAN_SET2_NUMBER);
 
   maze_map_init();
   sim_place_at_start(-1);
@@ -2971,8 +3000,15 @@ static bool explore_and_check(explore_type_t type, bool suction, bool verbose)
     ok = false;  /* 見に行く区画を残したまま帰った */
   }
   int cost = recorded_route_cost();
-  if ((is_unknown_walls_type(type) || type == EXPLORE_ALL_CELLS) && cost != best_cost) {
+  if (type == EXPLORE_ALL_CELLS && cost != best_cost) {
     ok = false;
+  }
+  /* 未知壁探索は、最短走行の組 1・組 2 のどちらの速さで比べても、全部の壁を知っているときと同じ速さ（B15） */
+  if (is_unknown_walls_type(type)) {
+    if (recorded_route_cost_for(SHORTEST_PLAN_SET1_NUMBER) != best_set1_cost ||
+        recorded_route_cost_for(SHORTEST_PLAN_SET2_NUMBER) != best_set2_cost) {
+      ok = false;
+    }
   }
 
   if (verbose) {
@@ -3023,7 +3059,7 @@ static void test_explore_side_align(const char *file_path)
     return;
   }
   s_sim_too_close_every = 7;
-  int best_cost = best_route_cost();
+  int best_set1_cost = best_route_cost_for(SHORTEST_PLAN_SET1_NUMBER);
   explore_type_t types[5] = {EXPLORE_ROUND_TRIP, EXPLORE_ALL_CELLS, EXPLORE_ONE_WAY, EXPLORE_UNKNOWN_WALLS,
                              EXPLORE_UNKNOWN_WALLS_KNOWN};
   bool ok = true;
@@ -3036,7 +3072,7 @@ static void test_explore_side_align(const char *file_path)
     if (result != EXPLORE_RESULT_DONE || s_sim_error_count != 0 || count_wrong_walls() != 0 || !s_sim_stopped) {
       ok = false;
     }
-    if (is_unknown_walls_type(types[i]) && recorded_route_cost() != best_cost) {
+    if (is_unknown_walls_type(types[i]) && recorded_route_cost_for(SHORTEST_PLAN_SET1_NUMBER) != best_set1_cost) {
       ok = false;
     }
   }
@@ -3050,7 +3086,7 @@ static void test_explore_side_align(const char *file_path)
  * 最後の 5 区画ぶんが戻って保存されるか、そのあとスタートに置き直して続きから探索できるかを調べる */
 static bool failsafe_and_continue(explore_type_t type, bool suction, int failsafe_at)
 {
-  int best_cost = best_route_cost();
+  int best_set1_cost = best_route_cost_for(SHORTEST_PLAN_SET1_NUMBER);
   bool ok = true;
 
   /* 1. 空の迷路から走らせて、途中でフェイルセーフを起こす */
@@ -3091,7 +3127,7 @@ static bool failsafe_and_continue(explore_type_t type, bool suction, int failsaf
   if (result != EXPLORE_RESULT_DONE || s_sim_error_count != 0 || count_wrong_walls() != 0) {
     ok = false;
   }
-  if (is_unknown_walls_type(type) && recorded_route_cost() != best_cost) {
+  if (is_unknown_walls_type(type) && recorded_route_cost_for(SHORTEST_PLAN_SET1_NUMBER) != best_set1_cost) {
     ok = false;
   }
   return ok;
@@ -3222,12 +3258,370 @@ static void test_explore_random(int maze_count, int expected_stop_total)
   }
   printf("  うまくいかなかった走行 %d 回、フェイルセーフのあとうまくいかなかった %d 回\n", fail_count, failsafe_fail_count);
   printf("  未知壁探索で止まった回数の合計 %d 回\n", unknown_walls_stop_total);
-  /* 前に確かめた合計（2026-11-08、KOGUMA.Mk3.1 の 16×16）。explore.c の止まり方を変えたときは、
+  /* 前に確かめた合計（2026-11-08、KOGUMA.Mk3.1 の 16×16。最短走行の組 1・組 2 の経路の壁を見るようにして（B15）、3214 → 3140 回）。
+   * explore.c の止まり方を変えたときは、
    * 変わった理由を確かめてから、この数を直す */
   check(unknown_walls_stop_total == expected_stop_total, "未知壁探索で止まった回数の合計が、前に確かめた回数と同じ");
   check(fail_count == 0, "ランダムな迷路でも、5 つの走り方が正しく終わる");
   check(known_stop_diff_count == 0, "既知区間加速ありでも、止まる回数は No.6 と同じ（同じ道を通る）");
   check(failsafe_fail_count == 0, "ランダムな迷路でも、フェイルセーフのあと続きから探索できる");
+}
+
+/* ---------------------------------------------------------------------------
+ * 10. 最短走行（sys/shortest.c）のテスト（ToraNeko.Mk3 の test_maze.c の 10 をもとにした）
+ *
+ * shortest.c が使う「最短走行の動き」（ctrl/run.h の run_fast_*）を、ここで仮に作る（仮の機体 その 2）。
+ * 仮の機体は、位置 [mm] と向き [deg] と速さを覚え、次のことを調べる。
+ *   - 直進・斜めの直進：頼まれた終わりの速さが、その距離で上げられる速さ以下で、最高速以下か。
+ *     始めの速さから、その距離で遅くしきれるか。縦横の直進では、始める位置（区画の境目から何 mm 先か。壁切れに使う）が合っているか
+ *   - 大回り・斜めのターン：今の速さで曲がるように頼まれたか（0 より大きく、今の組のそのターンの速さ以下）。
+ *     始める位置が、迷路の形どおり（大回り・斜め入りは区画のまん中、斜め出・V90 は壁の辺のまん中）か
+ *   - 小回り（No.1。KOGUMA.Mk3.1 で足した）：区画の境目の上から、探索の速さで曲がるように頼まれたか
+ *   - 止まる：その距離で止まれるか
+ * ターンで進む位置は、test_turn.c と同じ「終わりの位置」の表（左へ・前へ [mm]）で進める。
+ * KOGUMA.Mk3.1 で変えたところ：区画 180mm、ターンの組（組 2000・組 2400。run_fast_set_turn_set()）、No.1 の小回り。
+ * ------------------------------------------------------------------------- */
+
+static float s_fast_x_mm = 0.0f;       /* 仮の機体 その 2 の位置（区画 (0,0) の左下の角が原点）と向き（北が 90°） */
+static float s_fast_y_mm = 0.0f;
+static float s_fast_heading_deg = 90.0f;
+static float s_fast_speed_mm_s = 0.0f;
+static int s_fast_error_count = 0;     /* おかしな頼まれ方をした回数 */
+static int s_fast_slow_turn_count = 0; /* そのターンの速さより遅く曲がった回数（スタートの直後、ターンが続くときなど） */
+static int s_fast_full_turn_count = 0; /* そのターンの速さで曲がった回数 */
+static int s_fast_small_turn_count = 0; /* 小回りの回数（No.1） */
+static bool s_fast_stopped = false;    /* 最後に止まったか */
+static run_turn_set_t s_fast_turn_set = RUN_TURN_SET_2000;  /* 今のターンの組 */
+static float s_fast_suction_v = 0.0f;  /* 最後に上げた吸引の強さ [V] */
+
+/* 仮の機体 その 2 の、おかしな頼まれ方を数える（最初の数回だけ表示する） */
+static void fast_error(const char *message)
+{
+  if (s_fast_error_count < 5) {
+    printf("  仮の機体（最短）: %s（位置 %.1f, %.1f、向き %.0f°）\n", message, s_fast_x_mm, s_fast_y_mm, s_fast_heading_deg);
+  }
+  s_fast_error_count = s_fast_error_count + 1;
+}
+
+/* 今の向きに distance_mm 進む */
+static void fast_move(float distance_mm)
+{
+  float heading_rad = s_fast_heading_deg * 3.14159265f / 180.0f;
+  s_fast_x_mm = s_fast_x_mm + distance_mm * cosf(heading_rad);
+  s_fast_y_mm = s_fast_y_mm + distance_mm * sinf(heading_rad);
+}
+
+/* 直進の終わりの速さが、距離で上げられる速さ以下で、最高速以下か、始めの速さから遅くしきれるかを調べ、進む */
+static void fast_straight(float distance_mm, float max_speed_mm_s, float end_speed_mm_s, float accel_mm_s2)
+{
+  float start_mm2_s2 = s_fast_speed_mm_s * s_fast_speed_mm_s;
+  float end_mm2_s2 = end_speed_mm_s * end_speed_mm_s;
+  float reachable = sqrtf(start_mm2_s2 + 2.0f * accel_mm_s2 * distance_mm);
+  if (end_speed_mm_s > reachable + 0.01f) {
+    fast_error("直進の終わりの速さが、その距離では上げきれない");
+  }
+  if (end_speed_mm_s > max_speed_mm_s + 0.01f) {
+    fast_error("直進の終わりの速さが、最高速より速い");
+  }
+  if (start_mm2_s2 - end_mm2_s2 > 2.0f * accel_mm_s2 * distance_mm + 1.0f) {
+    fast_error("直進の始めの速さから、その距離では遅くしきれない");
+  }
+  fast_move(distance_mm);
+  s_fast_speed_mm_s = end_speed_mm_s;
+}
+
+/* 今の位置が、うしろの区画の境目から何 mm 先か（今の向きで。縦横を向いているときだけ使う。0 以上 180 未満） */
+static float position_in_cell_mm(void)
+{
+  float heading_deg = fmodf(s_fast_heading_deg + 3600.0f, 360.0f);
+  float in_cell_mm = 0.0f;
+  if (fabsf(heading_deg - 90.0f) < 1.0f) {
+    in_cell_mm = fmodf(s_fast_y_mm + 18000.0f, CELL_MM);           /* 北向き */
+  } else if (fabsf(heading_deg - 270.0f) < 1.0f) {
+    in_cell_mm = CELL_MM - fmodf(s_fast_y_mm + 18000.0f, CELL_MM);  /* 南向き */
+  } else if (heading_deg < 1.0f || heading_deg > 359.0f) {
+    in_cell_mm = fmodf(s_fast_x_mm + 18000.0f, CELL_MM);           /* 東向き */
+  } else {
+    in_cell_mm = CELL_MM - fmodf(s_fast_x_mm + 18000.0f, CELL_MM);  /* 西向き */
+  }
+  if (in_cell_mm > CELL_MM - 0.5f) {
+    in_cell_mm = in_cell_mm - CELL_MM;  /* 境目のすぐ手前（179.9mm など）は、境目の上（0mm）とみなす */
+  }
+  return in_cell_mm;
+}
+
+/* 直進を始める位置として教えられた値（うしろの区画の境目から何 mm 先か）が、仮の機体の位置と合っているか（±0.5mm） */
+static void check_start_in_cell(float start_in_cell_mm)
+{
+  if (fabsf(position_in_cell_mm() - start_in_cell_mm) > 0.5f) {
+    fast_error("直進を始める位置（区画の境目から）が、教えられた値と違う");
+  }
+}
+
+void run_fast_start(void)
+{
+  s_fast_x_mm = HALF_CELL_MM;
+  s_fast_y_mm = HALF_CELL_MM - START_OFFSET_MM;  /* お尻を後ろの壁に付けて置く */
+  s_fast_heading_deg = 90.0f;
+  s_fast_speed_mm_s = 0.0f;
+  s_fast_stopped = false;
+}
+
+void run_fast_set_turn_set(run_turn_set_t set)
+{
+  s_fast_turn_set = set;
+}
+
+/* 吸引を上げる（強さを覚えるだけ） */
+void suction_ramp_up_to(float voltage_v)
+{
+  s_fast_suction_v = voltage_v;
+}
+
+void run_fast_straight(float distance_mm, float max_speed_mm_s, float end_speed_mm_s, float accel_mm_s2,
+                       float start_in_cell_mm)
+{
+  /* 始める位置が、うしろの区画の境目から何 mm 先か（壁切れに使う）。仮の機体の位置と合っているかを調べる */
+  check_start_in_cell(start_in_cell_mm);
+  fast_straight(distance_mm, max_speed_mm_s, end_speed_mm_s, accel_mm_s2);
+}
+
+void run_fast_diag_straight(float distance_mm, float max_speed_mm_s, float end_speed_mm_s, float accel_mm_s2)
+{
+  fast_straight(distance_mm, max_speed_mm_s, end_speed_mm_s, accel_mm_s2);
+}
+
+/* ターンごとの速さ（ctrl/run.c と同じく、今の組の config/turn_params.h の *_SPEED_MM_S。今はどのターンも組の速さ） */
+float run_fast_turn_speed_mm_s(run_fast_turn_t turn)
+{
+  (void)turn;  /* 組の中では、どのターンも同じ速さ */
+  if (s_fast_turn_set == RUN_TURN_SET_2400) {
+    return BIG90_2400_SPEED_MM_S;
+  }
+  return BIG90_SPEED_MM_S;
+}
+
+/* 位置 value_mm が、180mm ごとの格子で offset_mm のところか（±0.5mm） */
+static bool on_grid(float value_mm, float offset_mm)
+{
+  float rest_mm = fmodf(value_mm - offset_mm + 18000.0f, CELL_MM);
+  if (rest_mm < 0.5f || rest_mm > CELL_MM - 0.5f) {
+    return true;
+  }
+  return false;
+}
+
+/* 今の位置が区画のまん中か */
+static bool at_cell_center(void)
+{
+  return on_grid(s_fast_x_mm, HALF_CELL_MM) && on_grid(s_fast_y_mm, HALF_CELL_MM);
+}
+
+/* 今の位置が壁の辺のまん中か（片方が区画のまん中の線、もう片方が区画の境目の線） */
+static bool at_edge_middle(void)
+{
+  if (on_grid(s_fast_x_mm, HALF_CELL_MM) && on_grid(s_fast_y_mm, 0.0f)) {
+    return true;
+  }
+  if (on_grid(s_fast_x_mm, 0.0f) && on_grid(s_fast_y_mm, HALF_CELL_MM)) {
+    return true;
+  }
+  return false;
+}
+
+/* 前へ forward_mm・左へ left_mm 進んで、angle_deg だけ向きを変える（左が +） */
+static void fast_turn_move(float forward_mm, float left_mm, float angle_deg)
+{
+  float heading_rad = s_fast_heading_deg * 3.14159265f / 180.0f;
+  /* 前は今の向き、左はそれを左に 90° 回した向き */
+  s_fast_x_mm = s_fast_x_mm + forward_mm * cosf(heading_rad) - left_mm * sinf(heading_rad);
+  s_fast_y_mm = s_fast_y_mm + forward_mm * sinf(heading_rad) + left_mm * cosf(heading_rad);
+  s_fast_heading_deg = s_fast_heading_deg + angle_deg;
+}
+
+/* 小回り（No.1）：区画の入口の辺の上から、探索の速さで曲がり、横の区画の入口の辺へ（前へ半区画・横へ半区画） */
+static void fast_small_turn(bool is_left)
+{
+  if (!at_edge_middle()) {
+    fast_error("小回りを、区画の入口の辺の上でないところから始めた");
+  }
+  if (fabsf(s_fast_speed_mm_s - SEARCH_SPEED_MM_S) > 0.01f) {
+    fast_error("小回りを、探索の速さでない速さで始めた");
+  }
+  s_fast_small_turn_count = s_fast_small_turn_count + 1;
+  if (is_left) {
+    fast_turn_move(HALF_CELL_MM, HALF_CELL_MM, 90.0f);
+  } else {
+    fast_turn_move(HALF_CELL_MM, -HALF_CELL_MM, -90.0f);
+  }
+}
+
+void run_fast_turn_left(void)
+{
+  fast_small_turn(true);
+}
+
+void run_fast_turn_right(void)
+{
+  fast_small_turn(false);
+}
+
+void run_fast_turn(run_fast_turn_t turn, bool is_left, float speed_mm_s)
+{
+  float sqrt2 = 1.41421356f;
+  float angle_deg = 90.0f;
+  float left_mm = CELL_MM;
+  float forward_mm = CELL_MM;
+  bool starts_at_center = true;
+  if (turn == RUN_FAST_TURN_BIG180) {
+    angle_deg = 180.0f;
+    left_mm = CELL_MM;
+    forward_mm = 0.0f;
+  } else if (turn == RUN_FAST_TURN_IN45) {
+    angle_deg = 45.0f;
+    left_mm = HALF_CELL_MM;
+    forward_mm = CELL_MM;
+  } else if (turn == RUN_FAST_TURN_IN135) {
+    angle_deg = 135.0f;
+    left_mm = CELL_MM;
+    forward_mm = HALF_CELL_MM;
+  } else if (turn == RUN_FAST_TURN_OUT45) {
+    angle_deg = 45.0f;
+    left_mm = HALF_CELL_MM / sqrt2;
+    forward_mm = 3.0f * HALF_CELL_MM / sqrt2;
+    starts_at_center = false;
+  } else if (turn == RUN_FAST_TURN_OUT135) {
+    angle_deg = 135.0f;
+    left_mm = 3.0f * HALF_CELL_MM / sqrt2;
+    forward_mm = HALF_CELL_MM / sqrt2;
+    starts_at_center = false;
+  } else if (turn == RUN_FAST_TURN_V90) {
+    angle_deg = 90.0f;
+    left_mm = CELL_MM / sqrt2;
+    forward_mm = CELL_MM / sqrt2;
+    starts_at_center = false;
+  }
+
+  if (starts_at_center && !at_cell_center()) {
+    fast_error("大回り・斜め入りを、区画のまん中でないところから始めた");
+  }
+  if (!starts_at_center && !at_edge_middle()) {
+    fast_error("斜め出・V90 を、壁の辺のまん中でないところから始めた");
+  }
+  float turn_speed_mm_s = run_fast_turn_speed_mm_s(turn);
+  if (speed_mm_s <= 0.0f || speed_mm_s > turn_speed_mm_s + 0.01f) {
+    fast_error("ターンの速さがおかしい（0 以下か、そのターンの速さより速い）");
+  }
+  if (fabsf(speed_mm_s - s_fast_speed_mm_s) > 0.01f) {
+    fast_error("今の速さと違う速さで曲がるように頼まれた");
+  }
+  if (speed_mm_s < turn_speed_mm_s - 0.01f) {
+    s_fast_slow_turn_count = s_fast_slow_turn_count + 1;
+  } else {
+    s_fast_full_turn_count = s_fast_full_turn_count + 1;
+  }
+
+  if (!is_left) {
+    left_mm = -left_mm;
+    angle_deg = -angle_deg;
+  }
+  fast_turn_move(forward_mm, left_mm, angle_deg);
+}
+
+void run_fast_stop(float distance_mm, float max_speed_mm_s, float accel_mm_s2)
+{
+  (void)max_speed_mm_s;
+  /* 速さの 2 乗は 2000mm/s で 400 万になり、float の誤差が 0.5 ほど出るので、1.0 まで許す（直進の確かめと同じ） */
+  if (s_fast_speed_mm_s * s_fast_speed_mm_s > 2.0f * accel_mm_s2 * distance_mm + 1.0f) {
+    fast_error("止まる距離が足りない");
+  }
+  fast_move(distance_mm);
+  s_fast_speed_mm_s = 0.0f;
+  s_fast_stopped = true;
+}
+
+void run_fast_diag_stop(float distance_mm, float max_speed_mm_s, float accel_mm_s2)
+{
+  run_fast_stop(distance_mm, max_speed_mm_s, accel_mm_s2);
+}
+
+/* 最短走行（No.number）を走らせ、仮の機体 その 2 がおかしな頼まれ方をせず、ゴールの区画の中で止まれば true */
+static bool run_shortest_and_check(int number)
+{
+  s_fast_error_count = 0;
+  s_sim_failsafe = false;
+  s_sim_stopped = true;  /* 仮の機体（探索）の「止まっている」：最短走行の前に、探索の値を選び直すため */
+  shortest_result_t result = shortest_run(number, s_goal_x, s_goal_y);
+  if (result != SHORTEST_RESULT_DONE) {
+    printf("  No.%d：走り終わらなかった（結果 %d）\n", number, result);
+    return false;
+  }
+  if (!s_fast_stopped) {
+    fast_error("最後に止まっていない");
+  }
+  int cell_x = (int)floorf(s_fast_x_mm / CELL_MM);
+  int cell_y = (int)floorf(s_fast_y_mm / CELL_MM);
+  if (!is_in_goal(cell_x, cell_y)) {
+    fast_error("ゴールの区画の外で止まった");
+  }
+  if (s_sim_fan_on) {
+    fast_error("走り終わっても、吸引を止めていない");
+  }
+  return s_fast_error_count == 0;
+}
+
+/* No. ごとに、使うはずのターンの組と吸引の強さで走ったか */
+static bool shortest_used_values(int number, run_turn_set_t set, float suction_v)
+{
+  s_fast_suction_v = 0.0f;
+  bool ok = run_shortest_and_check(number);
+  if (s_fast_turn_set != set) {
+    ok = false;
+  }
+  if (suction_v > 0.0f && fabsf(s_fast_suction_v - suction_v) > 0.01f) {
+    ok = false;
+  }
+  return ok;
+}
+
+/* ランダムな迷路（ゴールが 2×2 のもの）と、壁のない迷路で、No.1〜9 を走らせる */
+static void test_shortest_runs(int maze_count)
+{
+  printf("[10] 最短走行（No.1〜9）：ランダムな迷路 %d 個\n", maze_count);
+  int tried = 0;
+  int fail_count = 0;
+  s_fast_slow_turn_count = 0;
+  s_fast_full_turn_count = 0;
+  s_fast_small_turn_count = 0;
+  for (int maze_index = 0; maze_index < maze_count; maze_index++) {
+    s_random_seed = (unsigned int)(maze_index + 50001);
+    make_random_true_maze();
+    if (s_goal_width != GOAL_WIDTH || s_goal_height != GOAL_HEIGHT) {
+      continue;  /* shortest.c はゴールの大きさを GOAL_WIDTH × GOAL_HEIGHT に決めている */
+    }
+    copy_true_maze_to_map();
+    tried = tried + 1;
+    for (int number = 1; number <= 9; number++) {
+      if (!run_shortest_and_check(number)) {
+        fail_count = fail_count + 1;
+      }
+    }
+  }
+  printf("  走らせた迷路 %d 個、うまくいかなかった走行 %d 回\n", tried, fail_count);
+  printf("  小回り %d 回、そのターンの速さで曲がったターン %d 回、遅く曲がったターン %d 回（スタートの直後・ターンが続くとき・ゴールで止まるとき）\n",
+         s_fast_small_turn_count, s_fast_full_turn_count, s_fast_slow_turn_count);
+  check(tried > 0 && fail_count == 0, "No.1〜9 で、ターンが迷路の形どおりに始まり、速さに無理がなく、ゴールの区画で止まる");
+  check(s_fast_small_turn_count > 0, "No.1 は小回りで曲がる");
+
+  make_open_true_maze();
+  copy_true_maze_to_map();
+  s_goal_x = 7;
+  s_goal_y = 7;
+  s_goal_width = 2;
+  s_goal_height = 2;
+  check(shortest_used_values(1, RUN_TURN_SET_2000, 0.0f), "壁のない迷路で (7,7) へ、No.1（小回り）が正しく走る");
+  check(shortest_used_values(5, RUN_TURN_SET_2000, SHORTEST5_SUCTION_V), "No.5 は組 2000・吸引 7.9V で正しく走る");
+  check(shortest_used_values(8, RUN_TURN_SET_2400, SHORTEST8_SUCTION_V), "No.8 は組 2400・吸引 11.1V で正しく走る");
 }
 
 int main(void)
@@ -3271,14 +3665,15 @@ int main(void)
   test_explore_known_diagonal("mazes/maze16_alljapan2025.txt");
   test_explore_known_diagonal_random(300);
   test_explore_types("mazes/maze16_center2x2.txt", 6, false);
-  test_explore_types("mazes/maze16_offset3x3.txt", 11, false);
-  test_explore_types("mazes/maze16_alljapan2025.txt", 35, true);
+  test_explore_types("mazes/maze16_offset3x3.txt", 8, false);
+  test_explore_types("mazes/maze16_alljapan2025.txt", 36, true);
   test_explore_side_align("mazes/maze16_alljapan2025.txt");
   test_explore_failsafe("mazes/maze16_center2x2.txt");
   test_explore_failsafe("mazes/maze16_alljapan2025.txt");
   test_explore_no_route();
   test_explore_forgets_previous_records();
-  test_explore_random(300, 3214);
+  test_explore_random(300, 3140);
+  test_shortest_runs(300);
 
   if (s_fail_count == 0) {
     printf("すべて成功\n");

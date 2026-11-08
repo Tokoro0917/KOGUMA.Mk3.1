@@ -11,6 +11,7 @@
  *     （下の「■ エセ全面探索」）
  *   - 既知区間加速は、No.7（未知壁探索＋既知区間加速）だけ（ToraNeko.Mk3 の No.4 と同じ）
  *   - 迷路は 16×16 なので、MOVE_LIMIT のコメントを直した
+ *   - 未知壁探索で、最短走行の値の組（組 1・組 2）ごとの経路の壁を全部見る（KOGUMA.MkIIl と同じ。B15。下の plan_unknown_walls()）
  *
  * ■ 機体の位置
  * 位置は s_x, s_y, s_dir で覚える。機体は次のどちらかの状態にいる（ctrl/run.h、maze/search.c と同じ考え方）。
@@ -55,13 +56,16 @@
 
 #include <stdbool.h>
 
+#include "config/run_params.h"
 #include "ctrl/run.h"
 #include "ctrl/wall_ctrl.h"
+#include "drv/fan.h"
+#include "maze/dijkstra.h"
 #include "maze/maze_map.h"
 #include "maze/search.h"
 #include "sys/failsafe.h"
-#include "drv/fan.h"
 #include "sys/flash.h"
+#include "sys/shortest.h"
 #include "sys/suction.h"
 #include "sys/ui.h"
 
@@ -310,6 +314,63 @@ static explore_result_t scan_all_cells(int goal_x, int goal_y, int goal_width, i
   return EXPLORE_RESULT_DONE;  /* 動きすぎた：エセ全面探索をやめて帰る */
 }
 
+/* ---- 未知壁探索で、最短走行の組ごとの経路を見る（KOGUMA_PORTING.md の B15。KOGUMA.Mk3.1 で足した） ----
+ * KOGUMA.MkIIl と同じく、よく使う最短走行の値の組（組 1 = モード1 No.5、組 2 = No.8。config/run_params.h の
+ * SHORTEST_PLAN_SET*_NUMBER）ごとに、その速さで走る時間がいちばん短い経路を求め、どの組の経路の壁も全部見る。
+ * こうすると、どちらの組で最短走行をしても、本当の最短経路を走れる。
+ *   - 計算するときは、まだ「見終わっていない」組を、組 1 から順に計算し、見に行く壁がある最初の組の経路を使う
+ *   - その組の経路の壁を全部見終わったら、「見終わった」にして、次の組を計算し直す（止まって計算する）
+ *   - ある組の経路の壁が全部見てあれば、そのあと壁を見ても、その組でそれより速い道は出てこない
+ *     （見ていない壁は「ない」とみなして計算しているので、壁を見るほど、どの道も同じか遅くなる）。
+ *     なので、見終わった組は計算し直さない */
+#define PLAN_SET_COUNT 2  /* 組の数 */
+
+static bool s_plan_set_done[PLAN_SET_COUNT];  /* 組ごとに、経路の壁を全部見終わったか */
+static int s_plan_set = 0;                    /* 今の経路は、どの組のものか（0 = 組 1、1 = 組 2） */
+
+/* 組 set（0 か 1）の、最短走行の No. */
+static int plan_set_number(int set)
+{
+  if (set == 1) {
+    return SHORTEST_PLAN_SET2_NUMBER;
+  }
+  return SHORTEST_PLAN_SET1_NUMBER;
+}
+
+/* 全部の組の経路の壁を、見終わったか */
+static bool all_plan_sets_done(void)
+{
+  for (int set = 0; set < PLAN_SET_COUNT; set++) {
+    if (!s_plan_set_done[set]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/* まだ見終わっていない組を、組 1 から順に計算し、見に行く壁がある最初の組の経路を覚える（search.c に覚えさせる）。
+ * 見に行く壁がない組は「見終わった」にする。どの組も見終わったら、最後に計算した経路が残る
+ * （このあとの search_check_unknown_walls() が UNKNOWN_WALL_NONE を返す） */
+static void plan_unknown_walls(int goal_x, int goal_y, int goal_width, int goal_height)
+{
+  for (int set = 0; set < PLAN_SET_COUNT; set++) {
+    if (s_plan_set_done[set]) {
+      continue;
+    }
+    shortest_set_route_cost(plan_set_number(set));  /* その組の速さで走る時間で比べる */
+    search_plan_unknown_walls(goal_x, goal_y, goal_width, goal_height);
+    dijkstra_set_step_cost();                         /* ほかで使うときのために、元に戻す */
+    s_plan_set = set;
+    int cell_x;
+    int cell_y;
+    direction_t wall_dir;
+    if (search_check_unknown_walls(&cell_x, &cell_y, &wall_dir) != UNKNOWN_WALL_NONE) {
+      return;  /* 見に行く壁がある（か、道がない）：この組の経路を使う */
+    }
+    s_plan_set_done[set] = true;  /* この組の経路の壁は、もう全部見てある */
+  }
+}
+
 /* 未知壁探索の経路を、止まって計算し直す（ダイクストラは重いので、止まっているときだけ計算する）。
  * ゴールへの道が見つからなければ、このあとの search_check_unknown_walls() が UNKNOWN_WALL_NO_PLAN を返す。
  * 止まる途中でぶつかった（フェイルセーフで止まった）ときは、計算せずに false を返す */
@@ -319,7 +380,7 @@ static bool stop_and_plan(int goal_x, int goal_y, int goal_width, int goal_heigh
   if (failsafe_is_stopped()) {
     return false;
   }
-  search_plan_unknown_walls(goal_x, goal_y, goal_width, goal_height);
+  plan_unknown_walls(goal_x, goal_y, goal_width, goal_height);
   return true;
 }
 
@@ -330,6 +391,11 @@ static bool stop_and_plan(int goal_x, int goal_y, int goal_width, int goal_heigh
  * （止まったまま。このあとスタートへ戻る） */
 static explore_result_t scan_unknown_walls(int goal_x, int goal_y, int goal_width, int goal_height)
 {
+  /* どの組も、まだ見終わっていない */
+  for (int set = 0; set < PLAN_SET_COUNT; set++) {
+    s_plan_set_done[set] = false;
+  }
+
   /* ゴールの区画の真ん中で止まって、見に行く壁を計算する */
   if (!stop_and_plan(goal_x, goal_y, goal_width, goal_height)) {
     return EXPLORE_RESULT_FAILSAFE;
@@ -342,8 +408,17 @@ static explore_result_t scan_unknown_walls(int goal_x, int goal_y, int goal_widt
     unknown_wall_result_t result = search_check_unknown_walls(&cell_x, &cell_y, &wall_dir);
 
     if (result == UNKNOWN_WALL_NONE) {
-      /* 見に行く壁がなくなった：止まらずにスタートへ戻る（最短経路は、最短走行のときに計算する） */
-      return EXPLORE_RESULT_DONE;
+      /* 今の組の経路の壁を、全部見終わった */
+      s_plan_set_done[s_plan_set] = true;
+      if (all_plan_sets_done()) {
+        /* どの組の経路の壁も見終わった：止まらずにスタートへ戻る（最短経路は、最短走行のときに計算する） */
+        return EXPLORE_RESULT_DONE;
+      }
+      /* まだ見終わっていない組がある：止まって、その組の経路を計算する */
+      if (!stop_and_plan(goal_x, goal_y, goal_width, goal_height)) {
+        return EXPLORE_RESULT_FAILSAFE;
+      }
+      continue;
     }
     if (result == UNKNOWN_WALL_NO_PLAN) {
       /* ゴールへの道が見つからなかった（壁の読み間違いなど）：未知壁探索をやめる */

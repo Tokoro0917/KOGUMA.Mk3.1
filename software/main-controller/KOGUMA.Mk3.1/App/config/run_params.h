@@ -4,7 +4,6 @@
  *
  * ToraNeko.Mk3 の App/config/run_params.h（ecd8e10）と同じ役目・同じ名前のファイル。値は KOGUMA.MkIIl のもの。
  * 使うのは、探索・最短走行の動き（ctrl/run.c）、迷路の計算（maze/dijkstra.c の走る時間の見積もり）、壁センサ（ctrl/wall_ctrl.c）。
- * 最短走行の速さ（SHORTEST*）は、ステップ10 で最短走行（sys/shortest.c）を作るときに足す。
  *
  * ■ 探索は 2 とおり（KOGUMA.MkIIl のモード0 と同じ。どちらを使うかは run_search_set_suction()。ctrl/run.c）
  *   吸引なし（スラローム探索。モード0 No.1〜3）：500mm/s（KOGUMA.MkIIl の Move.c の Robot_Maze_Sula_Action）
@@ -78,11 +77,94 @@
 #define ALIGN_TIME_MS      500       /* 前壁合わせの時間 [ms]（KOGUMA.MkIIl の Motor_Robot_Alignment も 0.5 秒） */
 #define STOP_SETTLE_MS     100       /* 止まったあと、目標の速さ 0 のまま制御を続ける時間 [ms]（ToraNeko.Mk3 と同じ） */
 
+/* ---- 最短走行（モード1。sys/shortest.c）----
+ * No. は遅い順（ToraNeko.Mk3 と同じ考え方）。No.4〜9 は KOGUMA.MkIIl のモード1 No.4〜9（ダイクストラ）と同じ値。
+ * KOGUMA.MkIIl の No.1〜3（BFS の経路）は持ち込まない（KOGUMA_PORTING.md の B4）ので、No.1〜3 は確かめ用にした：
+ *   No.1：小回りだけ（吸引なし。曲がるところは探索と同じ 500mm/s のスラローム）。道を確かめる
+ *   No.2・3：大回り・斜め、直進の最高速 ＝ ターンの速さ（区間ごとの加減速がない。KOGUMA.MkIIl のモード3 No.1・2）
+ * KOGUMA.MkIIl の直進は「減速は加速の 2 倍」だったが、ToraNeko.Mk3 の台形は加速と減速が同じ。なので同じ加速度でも、
+ * 止まる・遅くするのに KOGUMA の 2 倍の距離を使う（実機で走らせて、足りなければ上げる）。
+ * TURN は使うターンの組（0 なら小回りだけ、2000・2400 は config/turn_params.h の組）、SUCTION_V は吸引の強さ
+ * （KOGUMA.MkIIl の Suction_Start の duty × 15.8V。組 2000 は 50 → 7.9V、組 2400 は 70 → 11.1V） */
+
+/* No.1：小回りだけ（吸引なし） */
+#define SHORTEST1_TURN               0
+#define SHORTEST1_MAX_SPEED_MM_S     1000.0f
+#define SHORTEST1_ACCEL_MM_S2        5000.0f
+#define SHORTEST1_DIAG_MAX_SPEED_MM_S 1000.0f  /* 小回りだけなので使わない */
+#define SHORTEST1_DIAG_ACCEL_MM_S2   5000.0f
+#define SHORTEST1_SUCTION_V          0.0f
+/* No.2：ターン 2000、直進も 2000mm/s まで（KOGUMA.MkIIl のモード3 No.1） */
+#define SHORTEST2_TURN               2000
+#define SHORTEST2_MAX_SPEED_MM_S     2000.0f
+#define SHORTEST2_ACCEL_MM_S2        15000.0f
+#define SHORTEST2_DIAG_MAX_SPEED_MM_S 2000.0f
+#define SHORTEST2_DIAG_ACCEL_MM_S2   10000.0f
+#define SHORTEST2_SUCTION_V          7.9f
+/* No.3：ターン 2400、直進も 2400mm/s まで（KOGUMA.MkIIl のモード3 No.2） */
+#define SHORTEST3_TURN               2400
+#define SHORTEST3_MAX_SPEED_MM_S     2400.0f
+#define SHORTEST3_ACCEL_MM_S2        20000.0f
+#define SHORTEST3_DIAG_MAX_SPEED_MM_S 2400.0f
+#define SHORTEST3_DIAG_ACCEL_MM_S2   15000.0f
+#define SHORTEST3_SUCTION_V          11.1f
+/* No.4：ターン 2000、直線 6000mm/s・15000mm/s²（斜め 10000）（KOGUMA.MkIIl のモード1 No.4） */
+#define SHORTEST4_TURN               2000
+#define SHORTEST4_MAX_SPEED_MM_S     6000.0f
+#define SHORTEST4_ACCEL_MM_S2        15000.0f
+#define SHORTEST4_DIAG_MAX_SPEED_MM_S 6000.0f
+#define SHORTEST4_DIAG_ACCEL_MM_S2   10000.0f
+#define SHORTEST4_SUCTION_V          7.9f
+/* No.5：ターン 2000、直線 6000mm/s・20000mm/s²（斜め 15000）（No.5。探索のあとの最短と、未知壁探索の組 1） */
+#define SHORTEST5_TURN               2000
+#define SHORTEST5_MAX_SPEED_MM_S     6000.0f
+#define SHORTEST5_ACCEL_MM_S2        20000.0f
+#define SHORTEST5_DIAG_MAX_SPEED_MM_S 6000.0f
+#define SHORTEST5_DIAG_ACCEL_MM_S2   15000.0f
+#define SHORTEST5_SUCTION_V          7.9f
+/* No.6：ターン 2000、直線 6000mm/s・23000mm/s²（斜め 18000）（No.6） */
+#define SHORTEST6_TURN               2000
+#define SHORTEST6_MAX_SPEED_MM_S     6000.0f
+#define SHORTEST6_ACCEL_MM_S2        23000.0f
+#define SHORTEST6_DIAG_MAX_SPEED_MM_S 6000.0f
+#define SHORTEST6_DIAG_ACCEL_MM_S2   18000.0f
+#define SHORTEST6_SUCTION_V          7.9f
+/* No.7：ターン 2000、直線 6000mm/s・25000mm/s²（斜め 20000）（No.7） */
+#define SHORTEST7_TURN               2000
+#define SHORTEST7_MAX_SPEED_MM_S     6000.0f
+#define SHORTEST7_ACCEL_MM_S2        25000.0f
+#define SHORTEST7_DIAG_MAX_SPEED_MM_S 6000.0f
+#define SHORTEST7_DIAG_ACCEL_MM_S2   20000.0f
+#define SHORTEST7_SUCTION_V          7.9f
+/* No.8：ターン 2400、直線 6000mm/s・20000mm/s²（斜め 15000）（No.8。未知壁探索の組 2） */
+#define SHORTEST8_TURN               2400
+#define SHORTEST8_MAX_SPEED_MM_S     6000.0f
+#define SHORTEST8_ACCEL_MM_S2        20000.0f
+#define SHORTEST8_DIAG_MAX_SPEED_MM_S 6000.0f
+#define SHORTEST8_DIAG_ACCEL_MM_S2   15000.0f
+#define SHORTEST8_SUCTION_V          11.1f
+/* No.9：ターン 2400、直線 6000mm/s・23000mm/s²（斜め 18000）（No.9） */
+#define SHORTEST9_TURN               2400
+#define SHORTEST9_MAX_SPEED_MM_S     6000.0f
+#define SHORTEST9_ACCEL_MM_S2        23000.0f
+#define SHORTEST9_DIAG_MAX_SPEED_MM_S 6000.0f
+#define SHORTEST9_DIAG_ACCEL_MM_S2   18000.0f
+#define SHORTEST9_SUCTION_V          11.1f
+
+/* 探索のあとに続けて走る最短走行（モード0 No.8〜12）と、未知壁探索で見る最短走行の組（B15）の No.
+ * KOGUMA.MkIIl の G_Short_Run_Set（Core/Src/ShortParam.c）と同じ：組 1 = No.5、組 2 = No.8 */
+#define SHORTEST_AFTER_SEARCH_NUMBER 5
+#define SHORTEST_PLAN_SET1_NUMBER    5
+#define SHORTEST_PLAN_SET2_NUMBER    8
+
 /* ---- 最短走行の止まり方 ---- */
 
-/* ゴールにターンで入って終わるときに止まる加速度 [mm/s²]。
- * KOGUMA.MkIIl のダイクストラの見積もり（30000mm/s² で止まる）と同じ値。ステップ10 で、本当に走る値に合わせる */
+/* ゴールにターンで入って終わるときに止まる加速度 [mm/s²] と、止まるまでの距離の上限 [mm]。
+ * 加速度は KOGUMA.MkIIl のダイクストラの見積もり（30000mm/s² で止まる）と同じ値。
+ * ゴールの区画のまん中から壁までは 84mm なので、80mm 以内で止まる（ToraNeko.Mk3 は 45mm の区画で 40mm）。
+ * 30000mm/s² で 80mm なら 2191mm/s から止まれるので、ゴールに入る最後のターンは、組 2400 でも 2191mm/s で曲がる */
 #define SHORTEST_STOP_ACCEL_MM_S2 30000.0f
+#define SHORTEST_STOP_DISTANCE_MM 80.0f
 
 /* ---- 探索の前壁補正（ctrl/run.c。ToraNeko.Mk3 の 2026-10-28） ----
  * 区画の入口で、その区画に前の壁があるとき、前センサで測った壁までの距離が FRONT_WALL_AT_ENTRY_MM からずれていれば、

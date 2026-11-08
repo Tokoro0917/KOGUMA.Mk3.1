@@ -8,6 +8,8 @@
  *     どちらの値で走るかを run_search_set_suction() で選ぶ（下の「■ 探索の 2 とおりの値」）。吸引のファンを回すのは呼んだ側（sys/explore.c）
  *   - 区画の大きさ（180mm）に合わせて、コメントの距離を直した。値はすべて config/run_params.h（KOGUMA.MkIIl の値）
  *   - 前壁補正と壁切れは、測るだけにしてある（config/run_params.h の FRONT_CORRECTION_ENABLE・WALL_EDGE_ENABLE が 0）
+ *   - 大回り・斜めのターンの値を 2 組（組 2000・組 2400。KOGUMA.MkIIl の G_Turn2000・G_Turn2400）にした。
+ *     どちらで曲がるかを run_fast_set_turn_set() で選ぶ（config/turn_params.h の先頭のコメント）
  * モードの番号（モード7 No.1 など）は ToraNeko.Mk3 のもの。KOGUMA.Mk3.1 もモードの並びは ToraNeko.Mk3 と同じにする（ステップ9 の MODES.md）。
  *
  * ■ 2 つの状態（run.h の先頭のコメント）
@@ -832,8 +834,17 @@ static void fast_turn(float speed_mm_s, fast_turn_values_t turn, bool is_left)
   wait_until_done();
 }
 
-/* ターン turn の値を、config/turn_params.h から取り出す（前距離・後距離は、計算の値に実機で足す分を足したもの） */
-static fast_turn_values_t fast_turn_values(run_fast_turn_t turn)
+/* どちらのターンの組で曲がるか（run_fast_set_turn_set()。はじめは組 2000） */
+static run_turn_set_t s_turn_set = RUN_TURN_SET_2000;
+
+/* 大回り・斜めのターンを、どちらの組の値（config/turn_params.h の先頭のコメント）で曲がるかを決める（KOGUMA.Mk3.1 で足した） */
+void run_fast_set_turn_set(run_turn_set_t set)
+{
+  s_turn_set = set;
+}
+
+/* ターン turn の値を、組 2000 の表から取り出す（前距離・後距離は、計算の値に実機で足す分を足したもの） */
+static fast_turn_values_t fast_turn_values_2000(run_fast_turn_t turn)
 {
   fast_turn_values_t values = {90.0f, BIG90_SPEED_MM_S, BIG90_OMEGA_DEG_S, BIG90_ALPHA_DEG_S2, BIG90_PRE_MM + BIG90_PRE_ADJUST_MM, BIG90_POST_MM + BIG90_POST_ADJUST_MM};
   if (turn == RUN_FAST_TURN_BIG180) {
@@ -856,6 +867,41 @@ static fast_turn_values_t fast_turn_values(run_fast_turn_t turn)
     values = v90;
   }
   return values;
+}
+
+/* ターン turn の値を、組 2400 の表から取り出す（fast_turn_values_2000() と同じ形。名前に _2400 が付いた値） */
+static fast_turn_values_t fast_turn_values_2400(run_fast_turn_t turn)
+{
+  fast_turn_values_t values = {90.0f, BIG90_2400_SPEED_MM_S, BIG90_2400_OMEGA_DEG_S, BIG90_2400_ALPHA_DEG_S2, BIG90_2400_PRE_MM + BIG90_2400_PRE_ADJUST_MM, BIG90_2400_POST_MM + BIG90_2400_POST_ADJUST_MM};
+  if (turn == RUN_FAST_TURN_BIG180) {
+    fast_turn_values_t big180 = {180.0f, BIG180_2400_SPEED_MM_S, BIG180_2400_OMEGA_DEG_S, BIG180_2400_ALPHA_DEG_S2, BIG180_2400_PRE_MM + BIG180_2400_PRE_ADJUST_MM, BIG180_2400_POST_MM + BIG180_2400_POST_ADJUST_MM};
+    values = big180;
+  } else if (turn == RUN_FAST_TURN_IN45) {
+    fast_turn_values_t in45 = {45.0f, IN45_2400_SPEED_MM_S, IN45_2400_OMEGA_DEG_S, IN45_2400_ALPHA_DEG_S2, IN45_2400_PRE_MM + IN45_2400_PRE_ADJUST_MM, IN45_2400_POST_MM + IN45_2400_POST_ADJUST_MM};
+    values = in45;
+  } else if (turn == RUN_FAST_TURN_IN135) {
+    fast_turn_values_t in135 = {135.0f, IN135_2400_SPEED_MM_S, IN135_2400_OMEGA_DEG_S, IN135_2400_ALPHA_DEG_S2, IN135_2400_PRE_MM + IN135_2400_PRE_ADJUST_MM, IN135_2400_POST_MM + IN135_2400_POST_ADJUST_MM};
+    values = in135;
+  } else if (turn == RUN_FAST_TURN_OUT45) {
+    fast_turn_values_t out45 = {45.0f, OUT45_2400_SPEED_MM_S, OUT45_2400_OMEGA_DEG_S, OUT45_2400_ALPHA_DEG_S2, OUT45_2400_PRE_MM + OUT45_2400_PRE_ADJUST_MM, OUT45_2400_POST_MM + OUT45_2400_POST_ADJUST_MM};
+    values = out45;
+  } else if (turn == RUN_FAST_TURN_OUT135) {
+    fast_turn_values_t out135 = {135.0f, OUT135_2400_SPEED_MM_S, OUT135_2400_OMEGA_DEG_S, OUT135_2400_ALPHA_DEG_S2, OUT135_2400_PRE_MM + OUT135_2400_PRE_ADJUST_MM, OUT135_2400_POST_MM + OUT135_2400_POST_ADJUST_MM};
+    values = out135;
+  } else if (turn == RUN_FAST_TURN_V90) {
+    fast_turn_values_t v90 = {90.0f, V90_2400_SPEED_MM_S, V90_2400_OMEGA_DEG_S, V90_2400_ALPHA_DEG_S2, V90_2400_PRE_MM + V90_2400_PRE_ADJUST_MM, V90_2400_POST_MM + V90_2400_POST_ADJUST_MM};
+    values = v90;
+  }
+  return values;
+}
+
+/* ターン turn の値を、今の組（s_turn_set）の表から取り出す */
+static fast_turn_values_t fast_turn_values(run_fast_turn_t turn)
+{
+  if (s_turn_set == RUN_TURN_SET_2400) {
+    return fast_turn_values_2400(turn);
+  }
+  return fast_turn_values_2000(turn);
 }
 
 /* ターン turn を曲がる速さ [mm/s]（config/turn_params.h の *_SPEED_MM_S。ターンの調整（モード3）で使う） */

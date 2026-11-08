@@ -3,7 +3,7 @@
  * 機体を動かす（直進・スラローム・止まる・発進など）
  *
  * ToraNeko.Mk3 の App/ctrl/run.h（ecd8e10）をもとにした。KOGUMA.Mk3.1 で変えたところ：探索の値を 2 とおり（吸引なし・吸引あり）
- * から選ぶ run_search_set_suction() と、今の探索の速さ run_get_search_speed_mm_s() を足した（run.c の先頭のコメント）。
+ * から選ぶ run_search_set_suction() と、今の探索の速さ run_get_search_speed_mm_s()、ターンの組を選ぶ run_fast_set_turn_set() を足した（run.c の先頭のコメント）。
  *
  * 中身は run.c。探索（sys/explore.c。ステップ9）と最短走行（sys/shortest.c。ステップ10）が使う動き。
  * PC のテストでは、test/test_maze.c の中の「仮の機体」がこの関数を持っている。
@@ -71,6 +71,7 @@ void run_search_align_to_side(bool is_left);
  *   run_fast_turn_left()・_right()                     探索の速さ（run_search_set_suction() で選んだほう）で、小回りのスラローム 90°
  *   run_fast_turn(ターン, 左なら true, 速さ)           大回り・斜めのターン（そのターンの速さ以下。遅くても同じ形で曲がる）
  *   run_fast_turn_speed_mm_s(ターン)                  そのターンを曲がる速さ（config/turn_params.h の *_SPEED_MM_S）
+ *   run_fast_set_turn_set(組)                         大回り・斜めのターンを、組 2000・組 2400 のどちらの値で曲がるか（KOGUMA.Mk3.1 で足した）
  *   run_fast_stop(距離, 最高速, 加速度)                進みながら止まり、モーターの出力を 0 にして、ログを止める
  *   run_fast_diag_stop(…)                             斜めに進みながら止まる（同じ。横の壁に沿う補正のかわりに、斜めの補正を入れる）
  *   run_fast_set_diag_correction(入れるなら true)      斜めの直進で、斜めの補正を入れるか（ふつうは入れる。ターンの調整では入れない）
@@ -87,6 +88,13 @@ typedef enum {
   RUN_FAST_TURN_V90,     /* V90°：壁の辺のまん中（斜め） → 壁の辺のまん中（斜め） */
 } run_fast_turn_t;
 
+/* 大回り・斜めのターンの組（KOGUMA.Mk3.1 で足した。config/turn_params.h の先頭のコメント） */
+typedef enum {
+  RUN_TURN_SET_2000,  /* 組 2000（KOGUMA.MkIIl の G_Turn2000） */
+  RUN_TURN_SET_2400,  /* 組 2400（KOGUMA.MkIIl の G_Turn2400） */
+} run_turn_set_t;
+
+void run_fast_set_turn_set(run_turn_set_t set);
 void run_fast_start(void);
 void run_fast_straight(float distance_mm, float max_speed_mm_s, float end_speed_mm_s, float accel_mm_s2,
                        float start_in_cell_mm);

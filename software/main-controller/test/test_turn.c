@@ -14,6 +14,7 @@
  *     人が決めて、前距離・後距離を合わせていたので、その形にした。大回り 180° だけは、横の位置がスラロームだけで決まるので、
  *     ToraNeko.Mk3 と同じく、横がちょうど 1 区画になる最高角速度を探す
  *   - 探索のスラローム（吸引なし・吸引あり）も計算する（ToraNeko.Mk3 は test_trajectory.c の [6] で確かめていた）
+ *   - ターンの組を 2 つにした（組 2000・組 2400。KOGUMA.MkIIl の G_Turn2000・G_Turn2400。config/turn_params.h）
  *   - --slip（実機で足した分を「空回り」の式で説明する）は、まだ持ってきていない。実機でターンを合わせたあと（ステップ10）に持ってくる
  *
  * ■ 計算のしかた
@@ -90,6 +91,24 @@ static const turn_shape_t TURNS[TURN_COUNT] = {
   {"斜め出 135°", "OUT135", 135.0f, 3.0f * HALF_CELL_MM / SQRT2_F, HALF_CELL_MM / SQRT2_F, OUT135_SPEED_MM_S,
    OUT135_OMEGA_DEG_S, OUT135_ALPHA_DEG_S2},
   {"V90°", "V90", 90.0f, CELL_MM / SQRT2_F, CELL_MM / SQRT2_F, V90_SPEED_MM_S, V90_OMEGA_DEG_S, V90_ALPHA_DEG_S2},
+};
+
+/* 組 2400（KOGUMA.Mk3.1 で足した。config/turn_params.h の先頭のコメント）。終わりの位置は組 2000 と同じ */
+static const turn_shape_t TURNS_2400[TURN_COUNT] = {
+  {"大回り 90°(2400)", "BIG90_2400", 90.0f, CELL_MM, CELL_MM, BIG90_2400_SPEED_MM_S, BIG90_2400_OMEGA_DEG_S,
+   BIG90_2400_ALPHA_DEG_S2},
+  {"大回り 180°(2400)", "BIG180_2400", 180.0f, CELL_MM + BIG180_WIDTH_ADJUST_MM, 0.0f, BIG180_2400_SPEED_MM_S,
+   BIG180_2400_OMEGA_DEG_S, BIG180_2400_ALPHA_DEG_S2},
+  {"斜め入り 45°(2400)", "IN45_2400", 45.0f, HALF_CELL_MM, CELL_MM, IN45_2400_SPEED_MM_S, IN45_2400_OMEGA_DEG_S,
+   IN45_2400_ALPHA_DEG_S2},
+  {"斜め入り 135°(2400)", "IN135_2400", 135.0f, CELL_MM, HALF_CELL_MM, IN135_2400_SPEED_MM_S, IN135_2400_OMEGA_DEG_S,
+   IN135_2400_ALPHA_DEG_S2},
+  {"斜め出 45°(2400)", "OUT45_2400", 45.0f, HALF_CELL_MM / SQRT2_F, 3.0f * HALF_CELL_MM / SQRT2_F, OUT45_2400_SPEED_MM_S,
+   OUT45_2400_OMEGA_DEG_S, OUT45_2400_ALPHA_DEG_S2},
+  {"斜め出 135°(2400)", "OUT135_2400", 135.0f, 3.0f * HALF_CELL_MM / SQRT2_F, HALF_CELL_MM / SQRT2_F,
+   OUT135_2400_SPEED_MM_S, OUT135_2400_OMEGA_DEG_S, OUT135_2400_ALPHA_DEG_S2},
+  {"V90°(2400)", "V90_2400", 90.0f, CELL_MM / SQRT2_F, CELL_MM / SQRT2_F, V90_2400_SPEED_MM_S, V90_2400_OMEGA_DEG_S,
+   V90_2400_ALPHA_DEG_S2},
 };
 
 /* スラロームだけで進む位置（始めた向きから見て、左へ・前へ） */
@@ -179,16 +198,11 @@ static void print_turn_lines(const turn_shape_t *turn, float omega_deg_s)
   printf("#define %s_POST_MM %.1ff\n", turn->prefix, post_mm);
 }
 
-/* --calc：探索のスラロームと、最短走行のターンの前距離・後距離を計算して、貼る行を出す */
-static int calculate(void)
+/* 最短走行のターンの組 turns（TURN_COUNT 個）の前距離・後距離を計算して、貼る行を出す */
+static void calculate_turn_set(const turn_shape_t turns[])
 {
-  printf("/* ---- config/run_params.h に貼る（探索のスラローム。test/test_turn.c --calc） ---- */\n");
-  for (int i = 0; i < SEARCH_TURN_COUNT; i++) {
-    print_turn_lines(&SEARCH_TURNS[i], SEARCH_TURNS[i].omega_deg_s);
-  }
-  printf("\n/* ---- config/turn_params.h に貼る（最短走行のターン。test/test_turn.c --calc） ---- */\n");
   for (int i = 0; i < TURN_COUNT; i++) {
-    const turn_shape_t *turn = &TURNS[i];
+    const turn_shape_t *turn = &turns[i];
     float omega_deg_s = turn->omega_deg_s;
     if (turn->angle_deg > 179.0f) {
       omega_deg_s = find_big180_omega(turn);
@@ -201,6 +215,19 @@ static int calculate(void)
     }
     print_turn_lines(turn, omega_deg_s);
   }
+}
+
+/* --calc：探索のスラロームと、最短走行のターンの前距離・後距離を計算して、貼る行を出す */
+static int calculate(void)
+{
+  printf("/* ---- config/run_params.h に貼る（探索のスラローム。test/test_turn.c --calc） ---- */\n");
+  for (int i = 0; i < SEARCH_TURN_COUNT; i++) {
+    print_turn_lines(&SEARCH_TURNS[i], SEARCH_TURNS[i].omega_deg_s);
+  }
+  printf("\n/* ---- config/turn_params.h に貼る（最短走行のターン、組 2000。test/test_turn.c --calc） ---- */\n");
+  calculate_turn_set(TURNS);
+  printf("\n/* ---- config/turn_params.h に貼る（最短走行のターン、組 2400。test/test_turn.c --calc） ---- */\n");
+  calculate_turn_set(TURNS_2400);
   return 0;
 }
 
@@ -254,10 +281,20 @@ int main(int argc, char *argv[])
   check_turn(&TURNS[5], OUT135_PRE_MM, OUT135_POST_MM);
   check_turn(&TURNS[6], V90_PRE_MM, V90_POST_MM);
 
+  printf("[2b] 最短走行のターン、組 2400（config/turn_params.h の *_2400_*）\n");
+  check_turn(&TURNS_2400[0], BIG90_2400_PRE_MM, BIG90_2400_POST_MM);
+  check_turn(&TURNS_2400[1], BIG180_2400_PRE_MM, BIG180_2400_POST_MM);
+  check_turn(&TURNS_2400[2], IN45_2400_PRE_MM, IN45_2400_POST_MM);
+  check_turn(&TURNS_2400[3], IN135_2400_PRE_MM, IN135_2400_POST_MM);
+  check_turn(&TURNS_2400[4], OUT45_2400_PRE_MM, OUT45_2400_POST_MM);
+  check_turn(&TURNS_2400[5], OUT135_2400_PRE_MM, OUT135_2400_POST_MM);
+  check_turn(&TURNS_2400[6], V90_2400_PRE_MM, V90_2400_POST_MM);
+
   printf("[3] 遅く入ったターン（速さ k 倍、最高角速度 k 倍、角加速度 k² 倍）\n");
   check_slow_turn(&TURNS[0], 0.5f);
   check_slow_turn(&TURNS[2], 0.4f);
   check_slow_turn(&TURNS[3], 0.6f);
+  check_slow_turn(&TURNS_2400[0], 0.5f);
 
   if (s_fail_count == 0) {
     printf("すべて成功\n");
