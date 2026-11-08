@@ -33,20 +33,21 @@ KOGUMA.MkIIl と違うのは、機体（ピン・周辺機能）が違うとこ�
 | 制御周期 | **決定：2kHz**（`config/robot_params.h` の `CTRL_FREQ_HZ`。ToraNeko.Mk3 と同じ） | 2026-11-08 に決定（前の案は 1kHz）。係数は周期から換算する作り（ToraNeko と同じ）なので、KOGUMA の 1kHz の値も読み替えられる。F446 は 180MHz で、ToraNeko の F411（100MHz）より速く、迷路も 16×16 で小さいので、処理時間は ToraNeko より余裕がある見込み（ステップ2で測る） |
 | 制御周期のタイマー | **決定：TIM11**（ToraNeko.Mk3 と同じ。PSC 180-1、ARR 500-1） | 2026-11-08 に決定。F446 でも TIM11 は空いていて、割り込みの名前（`TIM1_TRG_COM_TIM11_IRQn`）も F411 と同じなので、`sys/scheduler.c` をそのまま持ってこられる。KOGUMA の TIM6 は使わない |
 | フェイルセーフ | **決定：ToraNeko.Mk3 と同じ**（見つけ方は `ctrl/control.c`、止まっているかは `sys/failsafe.c`、迷路を戻すのは `sys/explore.c`） | 2026-11-08 に決定。中身は [KOGUMA_PORTING.md](KOGUMA_PORTING.md) の E3。しきい値の値だけ、クラシックの速さに合わせて決め直す（ステップ7） |
-| 開発環境 | 案：**STM32CubeMX（コード生成、Toolchain = CMake）＋ VS Code（STM32Cube for Visual Studio Code 拡張）** | ToraNeko.Mk3 と同じ。コマンドラインだけでビルドできるので、CI や Claude の環境でもファームのビルドを確かめられる。KOGUMA.MkIIl の CubeIDE はやめる |
+| 開発環境 | **決定：STM32CubeMX（コード生成、Toolchain = CMake）＋ VS Code（STM32Cube for Visual Studio Code 拡張）**（2026-11-08 のアンケートで決定） | ToraNeko.Mk3 と同じ。コマンドラインだけでビルドできるので、CI や Claude の環境でもファームのビルドを確かめられる。KOGUMA.MkIIl の CubeIDE はやめる |
 | プロジェクト名 | 案：`KOGUMA.Mk3.1` | ToraNeko の `TORANEKO.Mk3` と同じく、機体の名前。成果物は `build/Debug/KOGUMA.Mk3.1.elf` |
 | ビルド | `cmake --preset Debug && cmake --build --preset Debug`（`software/main-controller/KOGUMA.Mk3.1/` で） | CubeMX が生成する `CMakePresets.json` をそのまま使う |
 | ライブラリ | STM32 HAL | ToraNeko.Mk3 と同じ |
 | クロック | HSE 10MHz → SYSCLK 180MHz（KOGUMA.MkIIl と同じ） | APB1 45MHz（タイマー 90MHz）、APB2 90MHz（タイマー 180MHz） |
 | 書き込み・デバッグ | SWD（PA13・PA14） | KOGUMA.MkIIl と同じ。書き込み器は作者に確認 |
-| PC との通信・printf | USART2 の TX だけ（PA2）、DMA で送る | KOGUMA.MkIIl と同じピン。送り方は ToraNeko.Mk3 の `drv/uart.c`（DMA・リングバッファ）。速さ（今は 115200bps）を上げるかは作者に確認 |
+| PC との通信・printf | USART2 の TX だけ（PA2）、DMA で送る。**921600bps**（2026-11-08 のアンケートで決定。STLINK-V3 の仮想 COM ポートを使っているので、ToraNeko と同じ速さにする） | KOGUMA.MkIIl と同じピン。送り方は ToraNeko.Mk3 の `drv/uart.c`（DMA・リングバッファ）。APB1 45MHz で 921600bps は約 0.35% のずれで、問題ない |
 | 処理時間計測・µs 待ち | TIM5（32bit）を 1MHz でフリーラン（**新しく足す**） | ToraNeko.Mk3 と同じ。KOGUMA.MkIIl にはない |
 | ms 単位の待ち | SysTick（`HAL_GetTick()`） | ToraNeko.Mk3 と同じ。KOGUMA の「共通カウンタを 0 に戻す `wait_ms`」はやめる |
 | 壁センサの点灯・測定の順番 | タイマーで待ち時間を作ってから ADC を起動し、DMA 完了割り込みで次の LED に進める連鎖（ToraNeko.Mk3 の方式）。待ち時間のタイマーは TIM8 | ToraNeko.Mk3 は TIM3 を使うが、KOGUMA の TIM3 はモーターの PWM（ピンが決まっているので変えられない）。ADC を起動できるタイマーのうち空いているのは TIM8 だけ（TIM6・TIM7 は ADC を起動できない） |
 | 割り込み優先度 | 壁センサの連鎖（ADC の DMA）> 制御周期（TIM11）> ログ送信（USART の DMA） | ToraNeko.Mk3 と同じ |
-| ブザー | 案：持ち込む（`drv/buzzer.c`。TIM4 CH4） | ToraNeko.Mk3 にはない。KOGUMA は合図をブザーで出しているので残す |
-| 迷路 | 16×16、ゴールは中央 2×2 | ゴールの位置を機体で入れて Flash に保存するか（ToraNeko.Mk3 の方式）は、ステップ9で決める |
-| 迷路と設定の保存 | 案：Flash のセクタ6・7（ToraNeko.Mk3 と同じ。プログラムは前の 256KB に収める） | F446RE と F411CE は Flash のセクタの分け方が同じ。KOGUMA.MkIIl は保存していなかった |
+| ブザー | **決定：持ち込む**（`drv/buzzer.c`。TIM4 CH4。2026-11-08 のアンケートで決定：合図は LED とブザーの両方） | ToraNeko.Mk3 にはない。KOGUMA は合図をブザーで出しているので残す |
+| 迷路 | 16×16、ゴールの大きさは 2×2。**位置は機体で入れて Flash に保存する**（ToraNeko と同じ。2026-11-08 のアンケートで決定） | 大会ごとにゴールの位置が違うときや、ベンチテストでゴールを動かすときも、コードを書き換えなくてよい。初めの値は中央（7, 7） |
+| 迷路と設定の保存 | Flash のセクタ6・7（ToraNeko.Mk3 と同じ。プログラムは前の 256KB に収める）。迷路・ゴールの位置・会場ごとの感度合わせの値を保存する（2026-11-08 のアンケートで決定） | F446RE と F411CE は Flash のセクタの分け方が同じ。KOGUMA.MkIIl は保存していなかった |
+| 操作とモード | **ToraNeko の形と、ToraNeko のモードの並び**（2026-11-08 のアンケートで決定）。タイヤで選ぶ → スイッチ S2 で決定 → 前センサに手をかざして離すとスタート。モード0 探索（中の No. は KOGUMA の No.1〜12）、1 最短走行、2 探索のターン調整、3 最短走行のターン調整、4 実験用、5 センサ、6 基本調整、7 出力と設定 | 詳しくはステップ9で MODES.md を作るときに、ToraNeko の MODES.md をもとに決める |
 
 ## ファイル構成（予定）
 

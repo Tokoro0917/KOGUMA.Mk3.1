@@ -111,7 +111,7 @@ KOGUMA.MkIIl は、どちらもデータシートの上限（10MHz）を超え�
 | 項目 | 設定 | KOGUMA.MkIIl |
 |---|---|---|
 | Mode | Single Wire (Half-Duplex)（変えない） | 同じ |
-| Baud Rate | 115200 bps（まずは変えない。PC とつなぐのに何を使っているかを確かめてから上げる。ToraNeko.Mk3 は 921600） | 115200 |
+| Baud Rate | **921600 bps**（STLINK-V3 の仮想 COM ポートなので、ToraNeko と同じにする。2026-11-08 のアンケートで決定） | 115200 |
 | Data Direction | **Transmit Only** | Receive and Transmit |
 | DMA（DMA Settings タブ → Add） | **USART2_TX** → DMA1 Stream6、Memory To Peripheral、Byte、Normal | なし |
 
