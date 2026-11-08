@@ -170,17 +170,17 @@ ToraNeko.Mk3 では作り方を考えながら進めたが、KOGUMA.Mk3.1 では
 |---|---|---|---|---|---|
 | 0 | F446 用の CMake プロジェクト作成 | `CMakeLists.txt`、`cmake/`、`Core/`（ひな形）、`App/app.c` | `.ioc` と `Core/` を、KOGUMA.MkIIl の設定と決めた設定（2kHz・TIM11 など）に合わせる | `KOGUMA.MkIIl.ioc`、`Core/`、`Drivers/` | **完了**（2026-11-08。CubeMX を使わずに作った。[CUBEMX_SETUP.md](CUBEMX_SETUP.md) の 0。ビルドは警告なし、CI でも確かめる。実機と、CubeMX で開けるかはまだ） |
 | 1 | LED・シリアル出力（printf）・ブザー | `drv/led.c`, `drv/uart.c`, `drv/timebase.c` | LED 8 個＋壁の表示 4 個、USART2（921600bps）、ブザー（新、`drv/buzzer.c`） | `UI.c`, `syscalls.c` | **作った**（2026-11-08。ビルドは警告なし。実機はまだ。下の「ステップ1の確かめ方」） |
-| 2 | 制御周期の割り込み | `sys/scheduler.c` | TIM11、2kHz（ToraNeko と同じ。タイマーのクロックが 180MHz なので PSC だけ違う） | `PL_timer.c` | |
-| 3 | エンコーダ | `drv/encoder.c` | SPI3、CS 2 本。磁石がモーターの軸ならギア比を掛ける。角度の歪みの補正（ToraNeko のモード6 No.6）を持ち込むか | `PL_encoder.c` | |
-| 4 | IMU | `drv/imu.c` | CS 名 `ICM_NSS` → `IMU_CS`。軸の向きと符号を確かめる | `lsm6dsr.c` | |
-| 5 | モーター・吸引ファン | `drv/motor.c`, `drv/fan.c` | TIM3 の 4ch（ドライバの型番で IN の使い方が変わる。回路図で確認）、TIM2 CH1。電圧の上限 | `motor.c`（出力の部分） | |
-| 6 | 壁センサ | `drv/wall.c`, `ctrl/wall_ctrl.c`, `ctrl/wall_dist.c` | ADC1 の 5ch（電池＋4）、LED 2 組。しきい値と距離の表は KOGUMA.MkIIl の値（`WallDistance.c`）から | `PL_sensor.c`, `Wallsensor.c`, `WallDistance.c` | |
+| 2 | 制御周期の割り込み | `sys/scheduler.c` | TIM11、2kHz（ToraNeko と同じ。タイマーのクロックが 180MHz なので PSC だけ違う） | `PL_timer.c` | **作った**（2026-11-08。ビルドは警告なし。実機はまだ。下の「ステップ1〜6の確かめ方」） |
+| 3 | エンコーダ | `drv/encoder.c` | SPI3、CS 2 本。磁石がモーターの軸ならギア比を掛ける。角度の歪みの補正（ToraNeko のモード6 No.6）を持ち込むか | `PL_encoder.c` | **作った**（2026-11-08。ビルドは警告なし。実機はまだ。下の「ステップ1〜6の確かめ方」）。向き（`ENCODER_*_SIGN`）は KOGUMA.MkIIl に合わせた。角度の歪みの補正の表は全部 0（測るのは `sys/encoder_cal.c` を持ってきてから） |
+| 4 | IMU | `drv/imu.c` | CS 名 `ICM_NSS` → `IMU_CS`。軸の向きと符号を確かめる | `lsm6dsr.c` | **作った**（2026-11-08。ビルドは警告なし。実機はまだ。下の「ステップ1〜6の確かめ方」）。KOGUMA.MkIIl の角速度の倍率 1.01 も入れた |
+| 5 | モーター・吸引ファン | `drv/motor.c`, `drv/fan.c` | TIM3 の 4ch（ドライバの型番で IN の使い方が変わる。回路図で確認）、TIM2 CH1。電圧の上限 | `motor.c`（出力の部分） | **作った**（2026-11-08。ビルドは警告なし。実機はまだ。下の「ステップ1〜6の確かめ方」）。電圧の上限は KOGUMA.MkIIl に合わせた（モーターは電池の電圧まで、ファンは 13.4V） |
+| 6 | 壁センサ | `drv/wall.c`, `ctrl/wall_ctrl.c`, `ctrl/wall_dist.c` | ADC1 の 5ch（電池＋4）、LED 2 組。しきい値と距離の表は KOGUMA.MkIIl の値（`WallDistance.c`）から | `PL_sensor.c`, `Wallsensor.c`, `WallDistance.c` | **AD 値の読み取り（`drv/wall.c`）を作った**（2026-11-08。実機はまだ）。KOGUMA は発光の組の分け方が ToraNeko と違う（組A = 左前＋左、組B = 右＋右前）。壁のあり・なし（`ctrl/wall_ctrl.c`）と距離の表（`ctrl/wall_dist.c`）はこのあと |
 | 7 | 速度・角度の制御、探索の動き、フェイルセーフの見つけ方 | `ctrl/odometry.c`, `ctrl/trajectory.c`, `ctrl/control.c`, `ctrl/run.c`, `ctrl/side_edge.c`, `config/ctrl_gains.h` | 制御方法は ToraNeko のまま（[KOGUMA_PORTING.md](KOGUMA_PORTING.md) の E2・E3）。タイヤ径・トレッド・ギア比・区画 180mm。係数とフェイルセーフのしきい値は KOGUMA の機体で決め直す（フィードフォワードの初めの値は KOGUMA のログのモデルから） | `motor.c`, `Move.c`, `SpeedPlan.c`, `PillarEdge.c`, `Failsafe.c` | |
 | 8 | 迷路探索と最短経路 | `maze/*`, `test/` | `MAZE_SIZE` 16。テストの迷路を 16×16 に（KOGUMA.MkIIl の `mazes/` を使う） | `Maze.c` | **完了**（2026-11-08、PC テスト済み）。下の「ステップ8でやったこと」 |
 | 9 | 探索走行・モード・ログ・フェイルセーフ・保存 | `sys/*`, `drv/flash_memory.c`, `drv/switch.c`, `tools/viewer.html` | モードの割り当てを決める（MODES.md）。KOGUMA にしかない機能（全面探索、感度合わせなど）をどうするか（[KOGUMA_PORTING.md](KOGUMA_PORTING.md)） | `main.c`, `UI.c`, `LOG.c`, `Failsafe.c` | |
 | 10 | 最短走行（大回り・斜め）とターンの値 | `sys/shortest.c`, `sys/turn_test.c`, `config/turn_params.h`, `test/test_turn.c` | ターンの値は KOGUMA.MkIIl の 2000・2400 の値から。180mm の区画で `test_turn --calc` をやり直す | `Move.c`, `ShortParam.c` | |
 
-### ステップ1の確かめ方（作者にお願いすること）
+### ステップ1〜6の確かめ方（作者にお願いすること）
 
 **注意：書き込むと、機体に入っている KOGUMA.MkIIl のファームウェア（大会用）は消える。** 学生大会（11-21〜22）の前なら、確かめたあとに CubeIDE で KOGUMA.MkIIl を書き戻すこと。
 
@@ -196,8 +196,16 @@ ToraNeko.Mk3 では作り方を考えながら進めたが、KOGUMA.Mk3.1 では
 7. シリアルを見る：VS Code の Serial Monitor（ToraNeko.Mk3 と同じ拡張）で、STLINK の仮想 COM ポートを選び、**Baud rate を 921600** にして **Start Monitoring** を押す。機体のリセットボタンを押すと、
    - `KOGUMA.Mk3.1 boot (SYSCLK 180000000 Hz)` と出る（180MHz で動いている）
    - そのあと 1 秒ごとに `t=1000 ms us=... dropped=0` のような行が出る。`t` が 1000 ずつ、`us` が約 1000000 ずつ増え、`dropped` は 0 のまま
-8. Claude に伝えること
-   - 6・7 のとおりになったか（ならなかったら、どこが違ったか。シリアルに出た文字はそのまま貼る）
+8. 続けて、シリアルに 1 秒ごとに出る 4 行を見る（ステップ2〜6）。機体は**動かさずに**置いておく（ジャイロのゼロ点を、起動してから 0.5 秒で測るため）
+   - 起動したときに `Encoder L: AGC=... MAGL=0 MAGH=0 ...`（左右）、`IMU OK (LSM6DSR)`、`Battery 16.xx V` が出る。`MAGL=1`（磁石が弱い・遠い）や `IMU NG` が出たら、その行を Claude に貼る
+   - `tick=2000 period=500-500 us busy=...`：制御周期の割り込みが 1 秒に 2000 回、0.5ms ごとに来ている（ステップ2）。`busy` は 1 回の処理の時間で、500 より十分小さい
+   - `enc total L=... R=...`：**タイヤを手で前に転がすと、L も R も増える**（後ろに転がすと減る）。どちらかが減ったら、その向きを Claude に伝える。`err` は 0 のまま（ステップ3）
+   - `imu ready=1 gyro=0.0 dps angle=...`：置いたままなら `gyro` は 0 の近く。**機体を上から見て左回り（反時計回り）に回すと、`angle` が増える**。ちょうど 1 回転（360°）回して戻したときの `angle` を Claude に伝える（ステップ4。KOGUMA.MkIIl の倍率 1.01 が合っているか）
+   - `batt=16.xx V`：テスターで測った電池の電圧と近いか（ステップ6。分圧の抵抗が合っているか）
+   - `wall FL=... L=... R=... FR=...`：**左前・左・右・右前のセンサの前に、1 つずつ手をかざすと、その値だけが大きくなる**。違うセンサの値が大きくなったら、どれをかざしたときにどれが大きくなったかを Claude に伝える。`overrun` は 0 のまま（ステップ6）
+9. モーター（ステップ5）：**機体をメンテナンス台などに載せて、タイヤを浮かせる**。スイッチ S2 を押しているあいだだけ、左右のタイヤが 1.0V でゆっくり回る（`motor=1`）。**左右とも、機体が前に進む向きに回るか**を見る。逆に回ったほうを Claude に伝える
+10. Claude に伝えること
+   - 6〜9 のとおりになったか（ならなかったら、どこが違ったか。シリアルに出た文字はそのまま貼る）
    - LED が光った**順番と場所**（基板のどの LED が LED1〜8・LEDF1〜4 か。ステップ9 で、モードの番号や電池の合図（外側の 4 個）を決めるのに使う）
    - ブザーの音の大きさ・高さ（KOGUMA.MkIIl と同じくらいか）
 

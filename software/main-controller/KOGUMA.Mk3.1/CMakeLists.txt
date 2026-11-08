@@ -47,13 +47,20 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 set(APP_SOURCES
     App/app.c
     App/drv/buzzer.c
+    App/drv/encoder.c
+    App/drv/fan.c
+    App/drv/imu.c
     App/drv/led.c
+    App/drv/motor.c
+    App/drv/switch.c
     App/drv/timebase.c
     App/drv/uart.c
+    App/drv/wall.c
     App/maze/maze_map.c
     App/maze/search.c
     App/maze/path.c
     App/maze/dijkstra.c
+    App/sys/scheduler.c
 )
 
 # Add sources to executable

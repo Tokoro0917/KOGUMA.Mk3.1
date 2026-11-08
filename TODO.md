@@ -8,7 +8,7 @@ KOGUMA.MkIIl の学生大会（2026-11-21〜22）までは、作者の実機の�
 
 - [x] ~~CubeMX でプロジェクトを作る~~ → 2026-11-08 に Claude が KOGUMA.MkIIl と ToraNeko.Mk3 のプロジェクトを写して作った（作者の提案）
 - [ ] （急がない）CubeMX で `KOGUMA.Mk3.1.ioc` を開いて、エラーなく開けるか・生成したコードが変わらないかを確かめる（手順は [software/main-controller/CUBEMX_SETUP.md](software/main-controller/CUBEMX_SETUP.md) の 1-2）
-- [ ] **ステップ1 を実機で確かめる**（書き込むと KOGUMA.MkIIl の大会用のファームウェアは消えるので、確かめたら書き戻す。手順は [software/main-controller/README.md](software/main-controller/README.md) の「ステップ1の確かめ方」）
+- [ ] **ステップ1〜6 を実機で確かめる**（書き込むと KOGUMA.MkIIl の大会用のファームウェアは消えるので、確かめたら書き戻す。手順は [software/main-controller/README.md](software/main-controller/README.md) の「ステップ1〜6の確かめ方」）
 - [ ] **メイン基板の回路図**（PDF でよい）を `hardware/` に置く。とくに知りたいこと：PA10〜PA12 の用途、モータードライバの型番と TIM3 CH1〜4 のつながり、壁センサの受光と ADC チャンネル・発光の組の対応、電池の分圧の抵抗（[hardware/README.md](hardware/README.md)）
 - [x] PC とのシリアルに何を使っているか → STLINK-V3 の仮想 COM ポート。921600bps にする（2026-11-08）
 - [x] 決定事項の案と KOGUMA_PORTING.md の B の案を決める → 2026-11-08 のアンケートで決まった（下の「記録」）
@@ -17,11 +17,11 @@ KOGUMA.MkIIl の学生大会（2026-11-21〜22）までは、作者の実機の�
 
 - [x] ステップ0：CMake のプロジェクト（2026-11-08。KOGUMA.MkIIl と ToraNeko.Mk3 から作った。ビルドは警告なし。CI でビルドする）
 - [ ] ステップ1：LED・シリアル出力（921600bps）・ブザー（2026-11-08 に作った。**作者に実機で確かめてもらう**：[software/main-controller/README.md](software/main-controller/README.md) の「ステップ1の確かめ方」）
-- [ ] ステップ2：制御周期の割り込み（TIM11、2kHz。ToraNeko と同じ）と処理時間の計測（TIM5）
-- [ ] ステップ3：エンコーダ（SPI3）
-- [ ] ステップ4：IMU（SPI1）
-- [ ] ステップ5：モーター・吸引ファン
-- [ ] ステップ6：壁センサ（TIM8 → ADC → DMA の連鎖）
+- [ ] ステップ2：制御周期の割り込み（TIM11、2kHz。ToraNeko と同じ）と処理時間の計測（TIM5）（2026-11-08 に作った。実機はまだ）
+- [ ] ステップ3：エンコーダ（SPI3）（2026-11-08 に作った。実機はまだ。磁石がどの軸に付いているか・ギア比は、機構で確かめる）
+- [ ] ステップ4：IMU（SPI1）（2026-11-08 に作った。実機はまだ）
+- [ ] ステップ5：モーター・吸引ファン（2026-11-08 に作った。実機はまだ。ファンの型番・定格を確かめる）
+- [ ] ステップ6：壁センサ（TIM8 → ADC → DMA の連鎖）。AD 値の読み取りは 2026-11-08 に作った。壁のあり・なしと距離の表はこのあと
 - [ ] ステップ7：速度・角度の制御、探索の動き、フェイルセーフの異常の見つけ方。制御方法・フェイルセーフは ToraNeko と同じ（[software/main-controller/KOGUMA_PORTING.md](software/main-controller/KOGUMA_PORTING.md) の E2・E3）。係数・しきい値は KOGUMA の値を ToraNeko の式に換算して入れ、実機で合わせる（E2 の「係数の初めの値」）
 - [x] ステップ8：迷路（16×16）と PC テスト（2026-11-08。全面探索・行き止まり潰し、既知区間の斜めも足した。探索モードは全部残すため）
 - [ ] ステップ9：探索走行・モード（MODES.md を作る。操作は ToraNeko の形、モードの並びも ToraNeko、合図は LED とブザー）・ログ・フェイルセーフ・保存・ビューア。探索は KOGUMA のモード0 No.1〜12 を全部作る（[software/main-controller/KOGUMA_PORTING.md](software/main-controller/KOGUMA_PORTING.md) の「モード0（探索）の 12 種類」）。未知壁探索は最短走行の値の組ごとに回す（B15）
@@ -41,6 +41,10 @@ KOGUMA.MkIIl の学生大会（2026-11-21〜22）までは、作者の実機の�
 - [ ] KOGUMA.MkIIl の学生大会に向けた変更（電池を替えたあとのターンの合わせ直し、直線の加速の限界の測定、2400 を使うか）。結果が出たら、ステップ7・10 の値に使う（KOGUMA.MkIIl `TODO.md`）
 
 ## 記録
+
+### 2026-11-08（ステップ1〜6 のドライバ）
+
+- 作者の指示で、実機で確かめる前に続きを進めた。ステップ1（LED・シリアル・ブザー）、2（制御周期）、3（エンコーダ）、4（IMU）、5（モーター・ファン）、6 の AD 値の読み取り（壁センサ・電池）を作った。どれも ToraNeko.Mk3 のファイルを持ってきて、KOGUMA のピンと KOGUMA.MkIIl の値（向き、ジャイロの倍率 1.01、電池の分圧、ファンの上限）に合わせた。確かめの動きは app.c（1 秒ごとにシリアルに出す、S2 を押すとモーターが回る）
 
 ### 2026-11-08（ステップ0）
 
