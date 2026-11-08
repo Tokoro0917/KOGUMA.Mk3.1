@@ -1,0 +1,24 @@
+name: firmware-build
+
+# ToraNeko.Mk3 の .github/workflows/firmware-build.yml と同じ形。
+# 今は App/ の PC 上のテスト（test/ の make：test_maze）だけを実行する。
+# CubeMX のプロジェクト（software/main-controller/KOGUMA.Mk3.1/ の CMakeLists.txt など）ができたら（ステップ0）、
+# ARM 向けのビルドのジョブ（build）を ToraNeko.Mk3 から持ってきて足す。
+on:
+  push:
+    branches: [main]
+    paths: ['software/main-controller/KOGUMA.Mk3.1/**', 'software/main-controller/test/**', '.github/workflows/firmware-build.yml']
+  pull_request:
+    paths: ['software/main-controller/KOGUMA.Mk3.1/**', 'software/main-controller/test/**', '.github/workflows/firmware-build.yml']
+
+jobs:
+  maze-test:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: software/main-controller/test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PC 上のテスト（test_maze）
+        run: make

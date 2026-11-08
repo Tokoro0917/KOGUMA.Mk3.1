@@ -53,7 +53,10 @@ software/main-controller/
 ├── MODES.md                      機体の操作とモード（ステップ9で作る）
 ├── tools/                        ビューア（viewer.html）など（ToraNeko）
 ├── logs/                         実機の出力を残すフォルダ
-├── test/                         PC 上で動かすテスト（ToraNeko の test/ を 16×16 に直す）
+├── test/                         PC 上で動かすテスト（CI で実行）。ホストの gcc でビルドするので、ARM 向けの CMake プロジェクトとは分ける
+│   ├── test_maze.c               迷路のテスト（ToraNeko の test_maze.c を 16×16 にして、全面探索・既知区間の斜めのテストを足した）。`make` で実行
+│   ├── Makefile
+│   └── mazes/                    テスト用の 16×16 の迷路と、作る道具（gen_maze.py、KOGUMA の迷路の出力を直す from_koguma_dump.py）
 │
 └── KOGUMA.Mk3.1/                 CubeMX（CMake）プロジェクト（作者に CubeMX で作ってもらう）
     ├── KOGUMA.Mk3.1.ioc          CubeMX 設定（KOGUMA.MkIIl.ioc をもとにする）
@@ -70,8 +73,8 @@ software/main-controller/
         ├── config/               機体の定数（値は KOGUMA.MkIIl から）
         │   ├── robot_params.h    制御周期、電池の下限、タイヤ径、トレッド幅、ギア比
         │   ├── ctrl_gains.h      速度・角度の制御の係数
-        │   ├── run_params.h      探索の動きの値（180mm の区画に合わせる）
-        │   └── turn_params.h     最短走行のターンの値
+        │   ├── run_params.h      区画の大きさ（180mm）とスタートの位置。探索の動きの値はステップ7で足す
+        │   └── turn_params.h     最短走行のターンの値（今は KOGUMA の 2000 の値を仮に入れた。ステップ10で計算し直す）
         ├── drv/                  ハードに直接触れる層（ToraNeko。ピンと周辺機能を KOGUMA に合わせる）
         │   ├── encoder.c/.h      AS5047P ×2（SPI3）
         │   ├── imu.c/.h          LSM6DSR（SPI1）
@@ -85,7 +88,11 @@ software/main-controller/
         │   ├── timebase.c/.h     経過時間（ms は SysTick、µs は TIM5）
         │   └── uart.c/.h         ログ送信（USART2、DMA）
         ├── ctrl/                 制御（ToraNeko）：odometry、trajectory、control、wall_ctrl、wall_dist、side_edge、run
-        ├── maze/                 迷路（ToraNeko。HAL に依存しない。16×16 にする）：maze_map、search、dijkstra、path
+        ├── maze/                 迷路（ToraNeko。HAL に依存しない。PC でテストできる）。**ステップ8で作った**
+        │   ├── maze_map.c/.h     壁の情報の保持・更新（16×16）、最後に壁を記録した 5 区画ぶんを戻す
+        │   ├── search.c/.h       足立法・歩数マップ・未知壁探索で見に行く壁。全面探索と行き止まり潰し（KOGUMA から足した）
+        │   ├── dijkstra.c/.h     ダイクストラ：スタートからゴールまでの速く走れる道
+        │   └── path.c/.h         経路：既知区間（小回り。斜めにする形も KOGUMA から足した）、最短経路の大回り・斜めへの変換
         └── sys/                  全体の管理（ToraNeko）：scheduler、mode、ui、explore、shortest、log、output、failsafe、flash、goal、adjust など
 ```
 
@@ -130,9 +137,20 @@ ToraNeko.Mk3 では作り方を考えながら進めたが、KOGUMA.Mk3.1 では
 | 5 | モーター・吸引ファン | `drv/motor.c`, `drv/fan.c` | TIM3 の 4ch（ドライバの型番で IN の使い方が変わる。回路図で確認）、TIM2 CH1。電圧の上限 | `motor.c`（出力の部分） | |
 | 6 | 壁センサ | `drv/wall.c`, `ctrl/wall_ctrl.c`, `ctrl/wall_dist.c` | ADC1 の 5ch（電池＋4）、LED 2 組。しきい値と距離の表は KOGUMA.MkIIl の値（`WallDistance.c`）から | `PL_sensor.c`, `Wallsensor.c`, `WallDistance.c` | |
 | 7 | 速度・角度の制御、探索の動き | `ctrl/odometry.c`, `ctrl/trajectory.c`, `ctrl/control.c`, `ctrl/run.c`, `ctrl/side_edge.c` | タイヤ径・トレッド・ギア比・区画 180mm。ゲインとスラロームの値は KOGUMA.MkIIl から（周期をそろえて） | `motor.c`, `Move.c`, `SpeedPlan.c`, `PillarEdge.c` | |
-| 8 | 迷路探索と最短経路 | `maze/*`, `test/` | `MAZE_SIZE` 16。テストの迷路を 16×16 に（KOGUMA.MkIIl の `mazes/` を使う） | `Maze.c` | |
+| 8 | 迷路探索と最短経路 | `maze/*`, `test/` | `MAZE_SIZE` 16。テストの迷路を 16×16 に（KOGUMA.MkIIl の `mazes/` を使う） | `Maze.c` | **完了**（2026-11-08、PC テスト済み）。下の「ステップ8でやったこと」 |
 | 9 | 探索走行・モード・ログ・フェイルセーフ・保存 | `sys/*`, `drv/flash_memory.c`, `drv/switch.c`, `tools/viewer.html` | モードの割り当てを決める（MODES.md）。KOGUMA にしかない機能（全面探索、感度合わせなど）をどうするか（[PORTING.md](PORTING.md)） | `main.c`, `UI.c`, `LOG.c`, `Failsafe.c` | |
 | 10 | 最短走行（大回り・斜め）とターンの値 | `sys/shortest.c`, `sys/turn_test.c`, `config/turn_params.h`, `test/test_turn.c` | ターンの値は KOGUMA.MkIIl の 2000・2400 の値から。180mm の区画で `test_turn --calc` をやり直す | `Move.c`, `ShortParam.c` | |
+
+### ステップ8でやったこと（2026-11-08）
+
+- ToraNeko.Mk3 の `App/maze/`（`ecd8e10`）を持ってきて、`MAZE_SIZE` を 16 にした。迷路の処理は大きさを定数で持っているので、ほかはそのまま動いた
+- 走る時間の見積もり（ダイクストラのコスト）に使う値は、KOGUMA の値にした：区画 180mm、スタートから境目まで 114mm、ターンは KOGUMA の 2000 の値（`config/run_params.h`・`config/turn_params.h`。迷路が使う値だけ。ターンの値は仮で、ステップ10で計算し直す）
+- 作者の決定（2026-11-08）「今の探索モードは全部残す」に合わせて、KOGUMA にあって ToraNeko にない迷路の機能を足した（[PORTING.md](PORTING.md) の B）
+  - **全面探索と行き止まり潰し**（モード0 No.2・5）：`search_set_target_unvisited()`。目的地を「まだ入っていない区画すべて」にし、見た壁で袋小路とわかった区画は外す。見に行く区画がなくなるか、たどり着けなくなったらスタートへ帰る
+  - **既知区間を斜めで走る経路**（モード0 No.12）：`path_make_known_diagonal()`。斜めのまま終わるときは小回りに戻す
+- PC テスト（`test/test_maze.c`）：ToraNeko の迷路のテスト（1〜8、11）を 16×16 にし、全面探索（12）と既知区間の斜め（13）のテストを足した。2025 年の全日本のクラシックの迷路（KOGUMA.MkIIl の `mazes/`）でも走らせる。全部通る（PC で約 5 秒）。CI（`.github/workflows/firmware-build.yml`）でも実行する
+- 迷路の処理の RAM は約 15KB（ARM 向けにコンパイルして確かめた。ダイクストラ 10.7KB、壁の地図 1.4KB、経路 1.1KB、探索 1.8KB）
+- 探索走行（`sys/explore.c`）と最短走行（`sys/shortest.c`）は、ステップ9・10 で持ってくる。そのときに、仮の機体で走らせるテスト（ToraNeko の test_maze の 9・10）も足す
 
 ### KOGUMA.MkIIl のファイルとの対応
 

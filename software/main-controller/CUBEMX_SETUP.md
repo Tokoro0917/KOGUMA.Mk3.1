@@ -13,8 +13,8 @@ KOGUMA.MkIIl の `.ioc`（STM32CubeIDE 用）をもとに、CMake で生成す�
 
 ## 1. 元の .ioc を開いて、別の名前で保存する
 
-1. エクスプローラーで `software/main-controller/` の中に、空のフォルダ `KOGUMA.Mk3.1` を作る
-2. `software/reference/koguma-mkiil/KOGUMA.MkIIl.ioc` を、いま作った `software/main-controller/KOGUMA.Mk3.1/` にコピーし、名前を `KOGUMA.Mk3.1.ioc` に変える（`software/reference/` の中のものは編集しないので、必ずコピーしてから開く）
+1. `software/main-controller/KOGUMA.Mk3.1/` のフォルダは、もうある（中に、先に作った `App/`（迷路の処理など）が入っている。CubeMX は `App/` を消さない）
+2. `software/reference/koguma-mkiil/KOGUMA.MkIIl.ioc` を `software/main-controller/KOGUMA.Mk3.1/` にコピーし、名前を `KOGUMA.Mk3.1.ioc` に変える（`software/reference/` の中のものは編集しないので、必ずコピーしてから開く）
 3. CubeMX で **File → Load Project** を押し、コピーした `KOGUMA.Mk3.1.ioc` を開く
 4. 「Migrate」かどうか聞かれたら **Migrate** を押す（FW パッケージを新しいものにする。ToraNeko.Mk3 は STM32Cube FW_F4 V1.28.3）
 5. **Project Manager** タブの **Project** で、Project Name が `KOGUMA.Mk3.1`、Project Location が `software/main-controller` になっていることを確かめる（違ったら直す）
