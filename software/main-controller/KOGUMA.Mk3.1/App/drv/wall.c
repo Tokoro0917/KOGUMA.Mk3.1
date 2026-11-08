@@ -3,7 +3,7 @@
  * 壁センサ（受光 ×4、発光 2 組）の AD 値の読み取りと、電池の電圧
  *
  * ■ もとにしたもの
- * ToraNeko.Mk3 の App/drv/wall.c（ecd8e10）。KOGUMA.Mk3.1 で変えたところ：TIM3 → TIM8、ADC のチャンネルと受光の対応・電池の分圧を KOGUMA.MkIIl に合わせた。
+ * ToraNeko.Mk3 の App/drv/wall.c（ecd8e10）。KOGUMA.Mk3.1 で変えたところ：TIM3 → TIM8、ADC のチャンネルと電池の分圧を KOGUMA.MkIIl に合わせた（受光の並びと発光の組は ToraNeko と同じだった）。
  *
  * ■ 測定の流れ（README の決定事項「TIM8 で ADC を起動し、DMA 完了割り込みで次の LED に進める連鎖」。
  *   ToraNeko.Mk3 は TIM3 だが、KOGUMA は TIM3 がモーターの PWM なので TIM8 にした）
@@ -36,10 +36,10 @@
  * ■ 受光の番号と AD 変換の順番（CUBEMX_SETUP.md の 3-5。KOGUMA.MkIIl の PL_sensor.c と同じ並び）
  *   s_adc_buffer[0]：電池（PB1、IN9）
  *   s_adc_buffer[1]：受光 4 = 右前（PC0、IN10）
- *   s_adc_buffer[2]：受光 2 = 右（PC1、IN11）
- *   s_adc_buffer[3]：受光 3 = 左（PC2、IN12）
+ *   s_adc_buffer[2]：受光 3 = 左（PC1、IN11）
+ *   s_adc_buffer[3]：受光 2 = 右（PC2、IN12）
  *   s_adc_buffer[4]：受光 1 = 左前（PC3、IN13）
- * （KOGUMA.MkIIl の g_sensor_on[0] 左前 = [4]、[1] 左 = [3]、[2] 右 = [2]、[3] 右前 = [1]）
+ * （KOGUMA.MkIIl の g_sensor_on[0] 左前 = [4]、[1] 右 = [3]、[2] 左 = [2]、[3] 右前 = [1]。ToraNeko.Mk3 と同じ並び）
  *
  * ■ KOGUMA.MkIIl との違い
  * KOGUMA.MkIIl は、吸引ファン・車輪の PWM に合わせて読んでいた（PL_sensor.c の sensor_pwm_sync。吸引中に左前・左の
@@ -110,8 +110,8 @@ static void start_conversion_after_wait(void)
 static void copy_sensors(volatile uint16_t *values)
 {
   values[1] = s_adc_buffer[4];  /* 左前 */
-  values[2] = s_adc_buffer[2];  /* 右 */
-  values[3] = s_adc_buffer[3];  /* 左 */
+  values[2] = s_adc_buffer[3];  /* 右 */
+  values[3] = s_adc_buffer[2];  /* 左 */
   values[4] = s_adc_buffer[1];  /* 右前 */
 }
 

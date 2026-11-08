@@ -3,6 +3,7 @@
 #   make clean  ビルドしたものを消す
 #
 #   test_maze  迷路（App/maze/）。探索走行・最短走行（App/sys/explore.c・shortest.c）は、ステップ9・10 で足す
+#   test_wall_dist  壁センサの値を距離 [mm] に直す処理（App/ctrl/wall_dist.c）
 
 APP_DIR = ../KOGUMA.Mk3.1/App
 
@@ -16,14 +17,18 @@ MAZE_SOURCES = \
 	$(APP_DIR)/maze/search.c \
 	$(APP_DIR)/maze/path.c
 
-test: test_maze
+test: test_maze test_wall_dist
+	./test_wall_dist
 	./test_maze
 
 # dijkstra.c は test_maze.c の中で #include している（テストで中の関数を使うため）
 test_maze: test_maze.c $(MAZE_SOURCES) $(APP_DIR)/maze/dijkstra.c $(APP_HEADERS)
 	$(CC) $(CFLAGS) -o $@ test_maze.c $(MAZE_SOURCES) -lm
 
+test_wall_dist: test_wall_dist.c $(APP_DIR)/ctrl/wall_dist.c $(APP_HEADERS)
+	$(CC) $(CFLAGS) -o $@ test_wall_dist.c $(APP_DIR)/ctrl/wall_dist.c -lm
+
 clean:
-	rm -f test_maze
+	rm -f test_maze test_wall_dist
 
 .PHONY: test clean

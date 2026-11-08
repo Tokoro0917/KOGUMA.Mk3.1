@@ -3,18 +3,15 @@
  * 壁センサ（受光 ×4、発光 2 組）の AD 値の読み取りと、電池の電圧
  *
  * ■ もとにしたもの
- * ToraNeko.Mk3 の App/drv/wall.h（ecd8e10）。KOGUMA.Mk3.1 で変えたところ：発光の組の分け方（KOGUMA は 組A が左前＋左、組B が右＋右前）のコメント。
+ * ToraNeko.Mk3 の App/drv/wall.h（ecd8e10）。KOGUMA.Mk3.1 で変えたところ：発光のピンのコメント。
  *
  * 制御周期ごとに wall_start_measure() で測り始めると、裏で次の 4 回の測定が順に進む（約 0.16ms）。
  *   1. LED を全部消して、4 つの受光の値を測る（まわりの光の分。点けたときの値から引くと、LED の光の分だけが残る）
- *   2. 組A の LED（左前向き＋左向き。WALL_LED_A = PA1）を点けて、4 つの受光の値を測る
+ *   2. 組A の LED（左前向き＋右向き。WALL_LED_A = PA1、KOGUMA.MkIIl の WallLED_12）を点けて、4 つの受光の値を測る
  *   3. 組A を消して待つ（組A の光が受光に残ったまま、組B を測らないように）
- *   4. 組B の LED（右向き＋右前向き。WALL_LED_B = PA0）を点けて、4 つの受光の値を測る
- * 受光の番号は ToraNeko.Mk3 と同じ：1 = 左前、2 = 右の壁、3 = 左の壁、4 = 右前
- * （KOGUMA.MkIIl の PL_sensor.c から読んだもの。ステップ6 で実機で確かめる）。
- * ToraNeko.Mk3 とは組の分け方が違う（ToraNeko は 組A が左前＋右、組B が右前＋左）。
- * どの受光をどちらの組の値で読むかは、ctrl/wall_ctrl.c（ステップ6）で決める：
- *   左前（1）と左（3）は組A、右（2）と右前（4）は組B
+ *   4. 組B の LED（右前向き＋左向き。WALL_LED_B = PA0、KOGUMA.MkIIl の WallLED_34）を点けて、4 つの受光の値を測る
+ * 受光の番号：1 = 左前、2 = 右の壁、3 = 左の壁、4 = 右前（ToraNeko.Mk3 と同じ。KOGUMA.MkIIl の g_sensor の並び
+ * [0] 左前・[1] 右・[2] 左・[3] 右前 と同じ順。ステップ6 で実機で確かめる）
  * 結果は、次に測り終えるまで get の関数で読める。
  */
 #ifndef DRV_WALL_H

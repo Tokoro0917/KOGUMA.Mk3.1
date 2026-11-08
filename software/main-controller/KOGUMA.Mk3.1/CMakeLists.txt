@@ -46,6 +46,8 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # （ToraNeko.Mk3 と同じ書き方。ステップごとに 1 ファイルずつ足す。file(GLOB ...) は使わない）
 set(APP_SOURCES
     App/app.c
+    App/ctrl/wall_ctrl.c
+    App/ctrl/wall_dist.c
     App/drv/buzzer.c
     App/drv/encoder.c
     App/drv/fan.c
@@ -89,6 +91,8 @@ set_source_files_properties(${APP_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wall;-We
 # 制御のファイル（ctrl/）は、持ってきたときにここに足す。
 # ここに挙げたファイルは、デバッガで 1 行ずつ止めて見ると、行が飛んで見えることがある
 set(APP_FAST_SOURCES
+    App/ctrl/wall_ctrl.c
+    App/ctrl/wall_dist.c
     App/maze/maze_map.c
     App/maze/search.c
     App/maze/path.c

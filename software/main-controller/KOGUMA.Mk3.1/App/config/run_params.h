@@ -3,7 +3,7 @@
  * 区画の大きさと、走る動きの値
  *
  * ToraNeko.Mk3 の App/config/run_params.h と同じ役目のファイル。
- * 今は、迷路の計算（maze/dijkstra.c の走る時間の見積もり）が使う値だけを置いている（ステップ8）。
+ * 今は、迷路の計算（maze/dijkstra.c の走る時間の見積もり）と壁センサ（ctrl/wall_ctrl.c）が使う値だけを置いている。
  * 探索の速さ・スラローム・その場旋回などの値は、ステップ7 で探索の動きを作るときに、KOGUMA.MkIIl の値から足す。
  */
 #ifndef CONFIG_RUN_PARAMS_H
@@ -24,5 +24,17 @@
 /* ゴールにターンで入って終わるときに止まる加速度 [mm/s²]。
  * KOGUMA.MkIIl のダイクストラの見積もり（30000mm/s² で止まる）と同じ値。ステップ10 で、本当に走る値に合わせる */
 #define SHORTEST_STOP_ACCEL_MM_S2 30000.0f
+
+/* ---- 探索の横壁合わせ（ToraNeko.Mk3 の 2026-11-02。ctrl/wall_ctrl.c、のちに sys/explore.c・ctrl/run.c） ----
+ * 走っていて、区画の入口で横の壁が SIDE_TOO_CLOSE_MM より近いとわかったら、その区画のまん中で止まり、
+ * 近すぎた側の壁のほうへ 90° 回って前壁合わせをし、元の向きに戻ってから探索を続ける（左右のずれと向きを直す）。
+ * KOGUMA.MkIIl にはない動き。 */
+
+/* 横壁合わせをするか（1 する、0 しない）。0 でも、近すぎた回数と、いちばん近かった距離は測る。
+ * KOGUMA.Mk3.1 では、壁までの距離の表を実機で確かめるまで 0 にしておく */
+#define SIDE_ALIGN_ENABLE 0
+/* 横の壁がこれより近ければ「近すぎる」[mm]（区画のまん中で 84mm。20mm 寄っている。
+ * ToraNeko.Mk3 の 32mm（まん中 42mm から 10mm）と同じ割合にした。仮） */
+#define SIDE_TOO_CLOSE_MM 64.0f
 
 #endif /* CONFIG_RUN_PARAMS_H */

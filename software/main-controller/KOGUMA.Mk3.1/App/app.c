@@ -11,7 +11,9 @@
  *     - 制御周期（2kHz）の割り込みを始める（ここから、エンコーダ・IMU・壁センサを 0.5ms ごとに読む）
  *     - ジャイロのゼロ点は、起動してから 0.5 秒で測るので、そのあいだは機体を動かさない
  *   そのあと：
- *     - 表示 LED と壁の表示の LED を、0.1 秒ごとに 1 個ずつ順に点けていく（ステップ1）
+ *     - 表示 LED を、0.1 秒ごとに 1 個ずつ順に点けていく（ステップ1）
+ *     - 壁の表示の LED（LEDF1〜4）で、壁があるかを出す（ステップ6。KOGUMA.MkIIl の Wall_search_LED と同じ並び：
+ *       LEDF1 = 左前、LEDF2 = 右、LEDF3 = 左、LEDF4 = 右前）
  *     - 1 秒ごとに、制御周期の記録（ステップ2）、エンコーダ（ステップ3）、IMU（ステップ4）、電池と壁センサ（ステップ6）を
  *       シリアルに出す
  *     - スイッチ S2 を押しているあいだだけ、左右のモーターに MOTOR_TEST_V をかける（ステップ5）。
@@ -23,6 +25,7 @@
 #include <stdio.h>
 
 #include "config/robot_params.h"
+#include "ctrl/wall_ctrl.h"
 #include "drv/buzzer.h"
 #include "drv/encoder.h"
 #include "drv/fan.h"
@@ -47,7 +50,6 @@
 static uint32_t s_led_last_ms = 0;    /* 最後に LED を進めた時刻 [ms] */
 static uint32_t s_print_last_ms = 0;  /* 最後にシリアルに出した時刻 [ms] */
 static uint8_t s_led_num = 1;         /* 次に点ける表示 LED の番号（1〜8） */
-static uint8_t s_wall_led_num = 1;    /* 次に点ける壁の表示の LED の番号（1〜4） */
 static bool s_motor_on = false;       /* 今、モーターに電圧をかけているか */
 
 /* 電池の電圧を読んで、シリアルに出す。下限より低ければ知らせる（ここでは止めない。止めるのはステップ9 で作る） */
@@ -83,21 +85,29 @@ void app_init(void)
   buzzer_beep(BOOT_BEEP_HZ, BOOT_BEEP_MS);
 }
 
-/* 表示 LED と壁の表示の LED を、1 個ずつ次に進める（ステップ1） */
+/* 表示 LED を 1 個ずつ次に進める（ステップ1） */
 static void step_leds(void)
 {
-  led_all_off();
+  for (uint8_t num = 1; num <= LED_COUNT; num++) {
+    led_set(num, false);
+  }
   led_set(s_led_num, true);
-  led_set_wall(s_wall_led_num, true);
 
   s_led_num = s_led_num + 1;
   if (s_led_num > LED_COUNT) {
     s_led_num = 1;
   }
-  s_wall_led_num = s_wall_led_num + 1;
-  if (s_wall_led_num > WALL_LED_COUNT) {
-    s_wall_led_num = 1;
-  }
+}
+
+/* 壁の表示の LED で、壁があるかを出す（ステップ6）。前の壁は左前・右前の両方のしきい値で決まるので、
+ * 左前・右前の LED は、それぞれのセンサが前の壁を見ているか（距離が区画のまん中の前の壁より近いか）で点ける */
+static void show_walls(void)
+{
+  bool front = wall_ctrl_has_wall_front();
+  led_set_wall(1, front);                       /* 左前 */
+  led_set_wall(2, wall_ctrl_has_wall_right());  /* 右 */
+  led_set_wall(3, wall_ctrl_has_wall_left());   /* 左 */
+  led_set_wall(4, front);                       /* 右前 */
 }
 
 /* スイッチを押しているあいだだけ、モーターに電圧をかける（ステップ5） */
@@ -126,10 +136,14 @@ static void print_status(void)
          encoder_get_left_error_count(), encoder_get_right_error_count());
   printf("imu ready=%d gyro=%.1f dps angle=%.1f deg offset=%.2f dps\r\n", imu_is_offset_ready(), imu_get_gyro_z_dps(),
          imu_get_angle_deg(), imu_get_gyro_offset_dps());
-  /* 壁センサは、点けたときの値 − 全部消したときの値。左前（1）と左（3）は組A、右（2）と右前（4）は組B で点ける（drv/wall.h） */
+  /* 壁センサは、点けたときの値 − 全部消したときの値。左前（1）と右（2）は組A、左（3）と右前（4）は組B で点ける（drv/wall.h） */
   printf("batt=%.2f V wall FL=%ld L=%ld R=%ld FR=%ld overrun=%lu motor=%d\r\n", wall_get_battery_v(),
-         wall_get_a_minus_dark(1), wall_get_a_minus_dark(3), wall_get_b_minus_dark(2), wall_get_b_minus_dark(4),
+         wall_get_a_minus_dark(1), wall_get_b_minus_dark(3), wall_get_a_minus_dark(2), wall_get_b_minus_dark(4),
          wall_get_overrun_count(), s_motor_on);
+  /* 壁までの距離 [mm]（区画のまん中で 84mm）と、壁があるか（ctrl/wall_ctrl.c のしきい値。ステップ6） */
+  printf("mm FL=%.0f L=%.0f R=%.0f FR=%.0f wall front=%d left=%d right=%d hand=%d\r\n", wall_ctrl_get_front_left_mm(),
+         wall_ctrl_get_left_mm(), wall_ctrl_get_right_mm(), wall_ctrl_get_front_right_mm(), wall_ctrl_has_wall_front(),
+         wall_ctrl_has_wall_left(), wall_ctrl_has_wall_right(), wall_ctrl_is_hand_front());
 }
 
 /* main() の while(1) から繰り返し呼ばれる */
@@ -140,6 +154,7 @@ void app_loop(void)
   if (now_ms - s_led_last_ms >= LED_STEP_MS) {
     s_led_last_ms = now_ms;
     step_leds();
+    show_walls();
   }
 
   update_motor_test();
