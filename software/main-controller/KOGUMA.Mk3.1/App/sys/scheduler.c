@@ -3,7 +3,7 @@
  * 制御周期（2kHz）の割り込みで、制御の処理を呼ぶ
  *
  * ■ もとにしたもの
- * ToraNeko.Mk3 の App/sys/scheduler.c（ecd8e10）。KOGUMA.Mk3.1 で変えたところ：TIM11 のクロック（180MHz）のコメント。まだないもの（制御・速さと距離・エンコーダの歪みの記録）は呼ばない（ステップ7で足す）。
+ * ToraNeko.Mk3 の App/sys/scheduler.c（ecd8e10）。KOGUMA.Mk3.1 で変えたところ：TIM11 のクロック（180MHz）のコメント。まだないもの（エンコーダの歪みの記録 sys/encoder_cal.c）は呼ばない。
  *
  * ■ 仕組み
  * TIM11 は 1MHz（1 カウント = 1µs）で数え、500 まで数えるたびに 0 に戻って割り込みを出す（0.5ms ごと = 2kHz）。
@@ -31,6 +31,8 @@
 #include <stdbool.h>
 
 #include "config/robot_params.h"
+#include "ctrl/control.h"
+#include "ctrl/odometry.h"
 #include "drv/encoder.h"
 #include "drv/fan.h"
 #include "drv/imu.h"
@@ -50,13 +52,14 @@ static volatile uint32_t s_last_start_us = 0;          /* 前の回が始まっ�
 static volatile bool s_has_last_start = false;         /* 前の回の時刻があるか（最初の 1 回は間隔を測れない） */
 
 /* 制御の処理。制御周期ごとに 1 回呼ばれる。
- * ToraNeko.Mk3 では、encoder_update() のあとにエンコーダの歪みの記録（sys/encoder_cal.c）、imu_update() のあとに
- * 速さと距離（ctrl/odometry.c）と速度・角度の制御（ctrl/control.c）を呼んでいる。KOGUMA.Mk3.1 では、
- * それらを作るステップ（7）で足す */
+ * ToraNeko.Mk3 では、encoder_update() のあとにエンコーダの歪みの記録（sys/encoder_cal.c）も呼んでいる。
+ * KOGUMA.Mk3.1 では、sys/encoder_cal.c を持ってくるときに足す */
 static void run_control(void)
 {
   encoder_update();
   imu_update();
+  odometry_update();     /* エンコーダから、速さと距離を求める */
+  control_update();      /* 走っているときだけ、目標の速さ・向きになるようにモーターの電圧を決める */
   /* 壁センサの測定は、エンコーダと IMU を読み終えてから始める（裏で進み、約 0.16ms で終わる）。
    * LED に流れる 155mA のパルスが、読み取りに混ざらないようにするため */
   wall_start_measure();

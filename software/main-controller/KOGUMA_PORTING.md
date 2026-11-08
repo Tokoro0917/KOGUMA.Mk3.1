@@ -99,7 +99,8 @@ ToraNeko.Mk3 の `ctrl/`（`odometry.c`・`trajectory.c`・`control.c`・`wall_c
 | 壁切れ | `motor.c`・`PillarEdge.c`（柱の壁切れ） | `ctrl/side_edge.c`（横のセンサの山の半分で、壁の終わり・柱の端を見つける。探索・最短走行で位置を直す） |
 
 **係数の初めの値**（ステップ7。**2026-11-08 のアンケートで決定：KOGUMA の値を換算する**）：
-- フィードバック（P・I）：KOGUMA の 7 組の PID（`motor.c` の `Ksp`・`Ksi`、`Ktp`・`Kti` など）を、ToraNeko の式（速さのずれ × SPEED_KP ＋ 位置のずれ × SPEED_KI、角速度のずれ × OMEGA_KP ＋ 角度のずれ × ANGLE_KI）に読み替えて、1 組にする。KOGUMA は 1kHz・Duty で出しているので、2kHz・電圧 [V] に直す（読み替えは近似になるので、実機で合わせる）。7 組のうちどれを基にするかは、走る時間がいちばん長い直進（`Ksp` など）を基にし、ターンの組との差を換算の表に残す
+- フィードバック（P・I）：KOGUMA の 7 組の PID（`motor.c` の `Ksp`・`Ksi`、`Ktp`・`Kti` など）を、ToraNeko の式（速さのずれ × SPEED_KP ＋ 位置のずれ × SPEED_KI、角速度のずれ × OMEGA_KP ＋ 角度のずれ × ANGLE_KI）に読み替えて、1 組にする。KOGUMA は 1kHz・PWM の数（1 あたり約 0.08V）で出しているので、電圧 [V] に直す（読み替えは近似になるので、実機で合わせる）。**作った（2026-11-08。`config/ctrl_gains.h`）**：速さは直進の組（`Ksp` 0.25・`Ksi` 0.0015 → 0.02V/(mm/s)・0.12V/mm）、向きは探索のスラロームの組（`Ktp_sula` 0.7・`Kti_sula` 0.005 → 0.0269V/(deg/s)・0.192V/deg。その場旋回の組と P が同じ）。ほかの組の換算は、そのファイルの先頭の表に残した
+- 横の壁の補正・斜めの補正・前壁合わせは、KOGUMA は電圧を直接足し、ToraNeko は目標の角速度・速さを曲げるので、そのまま換算できない。ToraNeko の値を、1mm あたりのセンサの値の変わり方の比でかけ直した（仮）
 - フィードフォワード：KOGUMA の `KT`・`KE`・`Aff`・`Bff`・`FF_offset` から換算する。KOGUMA の `docs/noise_limits.md` のログから求めた 1 輪の電圧のモデル（前に進む分 V = 1.25 + 1.5v + 0.35a、向きの分 ΔV = 0.063ω + 0.006ω̇。v は m/s、a は m/s²、ω は rad/s、ω̇ は rad/s²）と合うかも確かめる（ToraNeko の係数は mm/s・mm/s² の単位なので、1000 で割って入れる）
 - フェイルセーフのしきい値：KOGUMA の値（遅れ `Vdiff` 2000mm/s、壁を押している 100mm/s 未満）を、ToraNeko の見つけ方（10ms 続いたら止める）に合わせて入れる
 

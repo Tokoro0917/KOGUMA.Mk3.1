@@ -46,6 +46,10 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # （ToraNeko.Mk3 と同じ書き方。ステップごとに 1 ファイルずつ足す。file(GLOB ...) は使わない）
 set(APP_SOURCES
     App/app.c
+    App/ctrl/control.c
+    App/ctrl/odometry.c
+    App/ctrl/side_edge.c
+    App/ctrl/trajectory.c
     App/ctrl/wall_ctrl.c
     App/ctrl/wall_dist.c
     App/drv/buzzer.c
@@ -62,6 +66,8 @@ set(APP_SOURCES
     App/maze/search.c
     App/maze/path.c
     App/maze/dijkstra.c
+    App/sys/failsafe.c
+    App/sys/log.c
     App/sys/scheduler.c
 )
 
@@ -88,9 +94,12 @@ set_source_files_properties(${APP_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wall;-We
 # 走っているあいだに時間がかかる計算（迷路の計算と、制御周期の割り込みで動く制御）だけは、Debug でも
 # 速くなるようにビルドする（-O2）。ToraNeko.Mk3 で、-O0 のままだと、探索で区画の入口に着いてから次の動きを
 # 決めるまでに 30〜40ms かかり、そのあいだに機体が 10mm ほど進んで、曲がり始めが遅れた（2026-10-24）。
-# 制御のファイル（ctrl/）は、持ってきたときにここに足す。
 # ここに挙げたファイルは、デバッガで 1 行ずつ止めて見ると、行が飛んで見えることがある
 set(APP_FAST_SOURCES
+    App/ctrl/control.c
+    App/ctrl/odometry.c
+    App/ctrl/side_edge.c
+    App/ctrl/trajectory.c
     App/ctrl/wall_ctrl.c
     App/ctrl/wall_dist.c
     App/maze/maze_map.c

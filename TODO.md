@@ -8,7 +8,7 @@ KOGUMA.MkIIl の学生大会（2026-11-21〜22）までは、作者の実機の�
 
 - [x] ~~CubeMX でプロジェクトを作る~~ → 2026-11-08 に Claude が KOGUMA.MkIIl と ToraNeko.Mk3 のプロジェクトを写して作った（作者の提案）
 - [ ] （急がない）CubeMX で `KOGUMA.Mk3.1.ioc` を開いて、エラーなく開けるか・生成したコードが変わらないかを確かめる（手順は [software/main-controller/CUBEMX_SETUP.md](software/main-controller/CUBEMX_SETUP.md) の 1-2）
-- [ ] **ステップ1〜6 を実機で確かめる**（書き込むと KOGUMA.MkIIl の大会用のファームウェアは消えるので、確かめたら書き戻す。手順は [software/main-controller/README.md](software/main-controller/README.md) の「ステップ1〜6の確かめ方」）
+- [ ] **ステップ1〜7 を実機で確かめる**（書き込むと KOGUMA.MkIIl の大会用のファームウェアは消えるので、確かめたら書き戻す。手順は [software/main-controller/README.md](software/main-controller/README.md) の「ステップ1〜7の確かめ方」）
 - [ ] **メイン基板の回路図**（PDF でよい）を `hardware/` に置く。とくに知りたいこと：PA10〜PA12 の用途、モータードライバの型番と TIM3 CH1〜4 のつながり、壁センサの受光と ADC チャンネル・発光の組の対応、電池の分圧の抵抗（[hardware/README.md](hardware/README.md)）
 - [x] PC とのシリアルに何を使っているか → STLINK-V3 の仮想 COM ポート。921600bps にする（2026-11-08）
 - [x] 決定事項の案と KOGUMA_PORTING.md の B の案を決める → 2026-11-08 のアンケートで決まった（下の「記録」）
@@ -21,8 +21,8 @@ KOGUMA.MkIIl の学生大会（2026-11-21〜22）までは、作者の実機の�
 - [ ] ステップ3：エンコーダ（SPI3）（2026-11-08 に作った。実機はまだ。磁石がどの軸に付いているか・ギア比は、機構で確かめる）
 - [ ] ステップ4：IMU（SPI1）（2026-11-08 に作った。実機はまだ）
 - [ ] ステップ5：モーター・吸引ファン（2026-11-08 に作った。実機はまだ。ファンの型番・定格を確かめる）
-- [ ] ステップ6：壁センサ（TIM8 → ADC → DMA の連鎖）。AD 値の読み取りは 2026-11-08 に作った。壁のあり・なしと距離の表はこのあと
-- [ ] ステップ7：速度・角度の制御、探索の動き、フェイルセーフの異常の見つけ方。制御方法・フェイルセーフは ToraNeko と同じ（[software/main-controller/KOGUMA_PORTING.md](software/main-controller/KOGUMA_PORTING.md) の E2・E3）。係数・しきい値は KOGUMA の値を ToraNeko の式に換算して入れ、実機で合わせる（E2 の「係数の初めの値」）
+- [ ] ステップ6：壁センサ（2026-11-08 に作った。AD 値の読み取り、壁のあり・なし、壁までの距離。値は KOGUMA.MkIIl から。実機はまだ。ならさない値でしきい値を決め直す）
+- [ ] ステップ7：速度・角度の制御は 2026-11-08 に作った（ToraNeko と同じ。係数は KOGUMA の値を換算。実機はまだ）。**探索の動き（ctrl/run.c）はこのあと**
 - [x] ステップ8：迷路（16×16）と PC テスト（2026-11-08。全面探索・行き止まり潰し、既知区間の斜めも足した。探索モードは全部残すため）
 - [ ] ステップ9：探索走行・モード（MODES.md を作る。操作は ToraNeko の形、モードの並びも ToraNeko、合図は LED とブザー）・ログ・フェイルセーフ・保存・ビューア。探索は KOGUMA のモード0 No.1〜12 を全部作る（[software/main-controller/KOGUMA_PORTING.md](software/main-controller/KOGUMA_PORTING.md) の「モード0（探索）の 12 種類」）。未知壁探索は最短走行の値の組ごとに回す（B15）
 - [ ] ステップ10：最短走行（大回り・斜め）とターンの値。`config/turn_params.h` の仮の値（KOGUMA の 2000 の値）を `test_turn --calc` で計算し直し、2400 の値も入れる
@@ -41,6 +41,11 @@ KOGUMA.MkIIl の学生大会（2026-11-21〜22）までは、作者の実機の�
 - [ ] KOGUMA.MkIIl の学生大会に向けた変更（電池を替えたあとのターンの合わせ直し、直線の加速の限界の測定、2400 を使うか）。結果が出たら、ステップ7・10 の値に使う（KOGUMA.MkIIl `TODO.md`）
 
 ## 記録
+
+### 2026-11-08（ステップ6・7）
+
+- ステップ6：壁のあり・なし・壁までの距離（KOGUMA.MkIIl の Wallsensor.c・WallDistance.c の値）。前のコミットで左右の受光を逆にしていたのを直した（KOGUMA の並びは ToraNeko と同じだった）
+- ステップ7：速さと距離・台形の目標・速度と角度の制御・フェイルセーフの見つけ方・走行ログを ToraNeko から持ってきた。係数は KOGUMA.MkIIl の値を換算した（`config/ctrl_gains.h` の先頭の表）。PC テストを 3 つ足した（test_wall_dist・test_trajectory・test_control）
 
 ### 2026-11-08（ステップ1〜6 のドライバ）
 

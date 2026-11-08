@@ -175,12 +175,12 @@ ToraNeko.Mk3 では作り方を考えながら進めたが、KOGUMA.Mk3.1 では
 | 4 | IMU | `drv/imu.c` | CS 名 `ICM_NSS` → `IMU_CS`。軸の向きと符号を確かめる | `lsm6dsr.c` | **作った**（2026-11-08。ビルドは警告なし。実機はまだ。下の「ステップ1〜6の確かめ方」）。KOGUMA.MkIIl の角速度の倍率 1.01 も入れた |
 | 5 | モーター・吸引ファン | `drv/motor.c`, `drv/fan.c` | TIM3 の 4ch（ドライバの型番で IN の使い方が変わる。回路図で確認）、TIM2 CH1。電圧の上限 | `motor.c`（出力の部分） | **作った**（2026-11-08。ビルドは警告なし。実機はまだ。下の「ステップ1〜6の確かめ方」）。電圧の上限は KOGUMA.MkIIl に合わせた（モーターは電池の電圧まで、ファンは 13.4V） |
 | 6 | 壁センサ | `drv/wall.c`, `ctrl/wall_ctrl.c`, `ctrl/wall_dist.c` | ADC1 の 5ch（電池＋4）、LED 2 組。しきい値と距離の表は KOGUMA.MkIIl の値（`WallDistance.c`）から | `PL_sensor.c`, `Wallsensor.c`, `WallDistance.c` | **作った**（2026-11-08。実機はまだ）。AD 値の読み取り（`drv/wall.c`）、壁のあり・なしと前壁合わせ・横の壁のずれ（`ctrl/wall_ctrl.c`。しきい値は KOGUMA.MkIIl の `Wallsensor.c` の値）、壁までの距離（`ctrl/wall_dist.c`。KOGUMA.MkIIl の `WallDistance.c` の表と会場ごとの倍率。区画のまん中で 84mm。PC テスト `test_wall_dist`）。受光の並びと発光の組は ToraNeko と同じ。KOGUMA.MkIIl は値をならして（10 回の平均など）使っていたが、ToraNeko と同じく、ならさずに使う。実機の値を見て、しきい値とならすかを決め直す |
-| 7 | 速度・角度の制御、探索の動き、フェイルセーフの見つけ方 | `ctrl/odometry.c`, `ctrl/trajectory.c`, `ctrl/control.c`, `ctrl/run.c`, `ctrl/side_edge.c`, `config/ctrl_gains.h` | 制御方法は ToraNeko のまま（[KOGUMA_PORTING.md](KOGUMA_PORTING.md) の E2・E3）。タイヤ径・トレッド・ギア比・区画 180mm。係数とフェイルセーフのしきい値は KOGUMA の機体で決め直す（フィードフォワードの初めの値は KOGUMA のログのモデルから） | `motor.c`, `Move.c`, `SpeedPlan.c`, `PillarEdge.c`, `Failsafe.c` | |
+| 7 | 速度・角度の制御、探索の動き、フェイルセーフの見つけ方 | `ctrl/odometry.c`, `ctrl/trajectory.c`, `ctrl/control.c`, `ctrl/run.c`, `ctrl/side_edge.c`, `config/ctrl_gains.h` | 制御方法は ToraNeko のまま（[KOGUMA_PORTING.md](KOGUMA_PORTING.md) の E2・E3）。タイヤ径・トレッド・ギア比・区画 180mm。係数とフェイルセーフのしきい値は KOGUMA の機体で決め直す（フィードフォワードの初めの値は KOGUMA のログのモデルから） | `motor.c`, `Move.c`, `SpeedPlan.c`, `PillarEdge.c`, `Failsafe.c` | **速度・角度の制御を作った**（2026-11-08。実機はまだ）：速さと距離（`ctrl/odometry.c`。1 カウントの距離は KOGUMA.MkIIl の計算と同じ）、台形の目標（`ctrl/trajectory.c`）、制御とフェイルセーフの見つけ方（`ctrl/control.c`）、壁切れの端（`ctrl/side_edge.c`。値は仮）、フェイルセーフ（`sys/failsafe.c`）、走行ログ（`sys/log.c`。1600 行）。どれも ToraNeko のまま。係数は `config/ctrl_gains.h` に KOGUMA.MkIIl の値から換算して入れた（換算の表はそのファイルの先頭）。PC テスト `test_trajectory`・`test_control`。確かめは下の「ステップ1〜7の確かめ方」の 9（直進）。**探索の動き（`ctrl/run.c`）はまだ** |
 | 8 | 迷路探索と最短経路 | `maze/*`, `test/` | `MAZE_SIZE` 16。テストの迷路を 16×16 に（KOGUMA.MkIIl の `mazes/` を使う） | `Maze.c` | **完了**（2026-11-08、PC テスト済み）。下の「ステップ8でやったこと」 |
 | 9 | 探索走行・モード・ログ・フェイルセーフ・保存 | `sys/*`, `drv/flash_memory.c`, `drv/switch.c`, `tools/viewer.html` | モードの割り当てを決める（MODES.md）。KOGUMA にしかない機能（全面探索、感度合わせなど）をどうするか（[KOGUMA_PORTING.md](KOGUMA_PORTING.md)） | `main.c`, `UI.c`, `LOG.c`, `Failsafe.c` | |
 | 10 | 最短走行（大回り・斜め）とターンの値 | `sys/shortest.c`, `sys/turn_test.c`, `config/turn_params.h`, `test/test_turn.c` | ターンの値は KOGUMA.MkIIl の 2000・2400 の値から。180mm の区画で `test_turn --calc` をやり直す | `Move.c`, `ShortParam.c` | |
 
-### ステップ1〜6の確かめ方（作者にお願いすること）
+### ステップ1〜7の確かめ方（作者にお願いすること）
 
 **注意：書き込むと、機体に入っている KOGUMA.MkIIl のファームウェア（大会用）は消える。** 学生大会（11-21〜22）の前なら、確かめたあとに CubeIDE で KOGUMA.MkIIl を書き戻すこと。
 
@@ -205,8 +205,13 @@ ToraNeko.Mk3 では作り方を考えながら進めたが、KOGUMA.Mk3.1 では
    - `wall FL=... L=... R=... FR=...`：**左前・左・右・右前のセンサの前に、1 つずつ手をかざすと、その値だけが大きくなる**。違うセンサの値が大きくなったら、どれをかざしたときにどれが大きくなったかを Claude に伝える。`overrun` は 0 のまま（ステップ6）
    - `mm FL=... wall front=... left=... right=...`：機体を区画のまん中に置き、前・左・右に壁があるとき、距離がどれも 84 の近くになり、`front=1 left=1 right=1` になる。壁を 1 枚ずつ外すと、その壁の数字が 0 になる。壁の表示の LED（LEDF1 左前・LEDF2 右・LEDF3 左・LEDF4 右前）も同じように点く。**区画のまん中に置いて、3 枚とも壁あり、前の壁なし、左の壁なし、右の壁なし のときの `wall FL=... L=... R=... FR=...` の値**を Claude に伝える（しきい値を、ならさない値で決め直すため）
 9. モーター（ステップ5）：**機体をメンテナンス台などに載せて、タイヤを浮かせる**。スイッチ S2 を押しているあいだだけ、左右のタイヤが 1.0V でゆっくり回る（`motor=1`）。**左右とも、機体が前に進む向きに回るか**を見る。逆に回ったほうを Claude に伝える
-10. Claude に伝えること
-   - 6〜9 のとおりになったか（ならなかったら、どこが違ったか。シリアルに出た文字はそのまま貼る）
+10. 直進（ステップ7）：9 で左右とも前に回ることを確かめてから、機体を**スタート区画に、お尻を後ろの壁に付けて置き**、前に 4 区画あけておく。前センサに手をかざして離すと、1 秒後（ジャイロのゼロ点を 0.5 秒測ってから）、540mm（3 区画）を 500mm/s で走って止まり、ブザーが鳴る
+    - まっすぐ走って止まるか、壁に当たらないか、止まる位置（4 区画目のまん中のはず）を見る
+    - 止まったら、ケーブルを挿して S2 を押す。`RESULT straight target=540.0 mm encoder=... mm angle=... deg failsafe=...` の行と、走行ログ（`#BEGIN LOG` から `#END LOG` まで）が出る。ビューア（`tools/viewer.html`。ステップ9 で持ってくる）がまだないので、出た文字を全部そのまま Claude に貼る
+    - **ものさしで、走った距離**（後ろの壁からお尻まで）**を測って**、`encoder=` の値と一緒に Claude に伝える（タイヤの直径と、1 カウントの距離が合っているかを確かめる）
+    - `failsafe=` が 0 でなければ、途中で止めた（1 位置のずれ、2 角度のずれ、3 遅すぎ、4 進まない）。モーターかエンコーダの向きが逆のことが多い
+11. Claude に伝えること
+   - 6〜10 のとおりになったか（ならなかったら、どこが違ったか。シリアルに出た文字はそのまま貼る）
    - LED が光った**順番と場所**（基板のどの LED が LED1〜8・LEDF1〜4 か。ステップ9 で、モードの番号や電池の合図（外側の 4 個）を決めるのに使う）
    - ブザーの音の大きさ・高さ（KOGUMA.MkIIl と同じくらいか）
 

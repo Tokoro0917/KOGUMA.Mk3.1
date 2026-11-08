@@ -18,6 +18,11 @@
  *       シリアルに出す
  *     - スイッチ S2 を押しているあいだだけ、左右のモーターに MOTOR_TEST_V をかける（ステップ5）。
  *       **タイヤを浮かせてから押す**（机の上で押すと走り出す）
+ *     - 前センサに手をかざして離すと、1 秒後に直進のテストをする（ステップ7）：STRAIGHT_DISTANCE_MM を
+ *       STRAIGHT_SPEED_MM_S で走って止まる（横の壁の補正は入れない）。走り終わったら、走った距離・向きのずれ・
+ *       フェイルセーフで止まったわけを覚えておき、次に S2 を押したときに、それと走行ログをシリアルに出す
+ *       （走るときはケーブルを挿していないため。ToraNeko.Mk3 のモード6 No.1 と同じ考え方）
+ * ステップ9 でモード（sys/mode.c）を持ってきたら、この確かめの動きは、ToraNeko と同じくモードの中に移す。
  */
 #include "app.h"
 
@@ -25,6 +30,9 @@
 #include <stdio.h>
 
 #include "config/robot_params.h"
+#include "ctrl/control.h"
+#include "ctrl/odometry.h"
+#include "ctrl/trajectory.h"
 #include "ctrl/wall_ctrl.h"
 #include "drv/buzzer.h"
 #include "drv/encoder.h"
@@ -36,6 +44,8 @@
 #include "drv/timebase.h"
 #include "drv/uart.h"
 #include "drv/wall.h"
+#include "sys/failsafe.h"
+#include "sys/log.h"
 #include "sys/scheduler.h"
 
 #define LED_STEP_MS   100   /* LED を次に進める間隔 [ms] */
@@ -45,12 +55,25 @@
 #define BATTERY_MEASURE_WAIT_MS 10  /* 電池の電圧を読む前に待つ時間 [ms]（制御周期 20 回ぶん。ToraNeko.Mk3 と同じ） */
 #define MOTOR_TEST_V  1.0f  /* スイッチを押しているあいだモーターにかける電圧 [V]（ゆっくり回る。前に進む向きが +） */
 
+/* 直進のテスト（ステップ7。ToraNeko.Mk3 のモード6 No.1 と同じ形。値は KOGUMA の探索の速さ） */
+#define STRAIGHT_DISTANCE_MM    540.0f   /* 走る距離 [mm]（3 区画。スタート区画に置けば、4 区画目のまん中で止まる） */
+#define STRAIGHT_SPEED_MM_S     500.0f   /* 最高速 [mm/s]（KOGUMA.MkIIl のスラローム探索の速さ） */
+#define STRAIGHT_ACCEL_MM_S2    2000.0f  /* 加速度 [mm/s²]（仮。ゆっくりめ） */
+#define STRAIGHT_LOG_INTERVAL_MS 2       /* 走行ログを残す間隔 [ms] */
+#define START_DELAY_MS          1000     /* 手を離してから走り出すまで待つ時間 [ms]（ToraNeko と同じ） */
+#define SETTLE_MS               100      /* 止まってから制御を続けて待つ時間 [ms]（ぴたりと止めるため） */
+
 /* シリアルに出す文字は英数字だけにする（日本語は、表示するソフトによって文字化けするため。ToraNeko.Mk3 と同じ） */
 
 static uint32_t s_led_last_ms = 0;    /* 最後に LED を進めた時刻 [ms] */
 static uint32_t s_print_last_ms = 0;  /* 最後にシリアルに出した時刻 [ms] */
 static uint8_t s_led_num = 1;         /* 次に点ける表示 LED の番号（1〜8） */
 static bool s_motor_on = false;       /* 今、モーターに電圧をかけているか */
+static bool s_hand_seen = false;      /* 前センサに手がかざされたのを見たか（離したら走る） */
+static bool s_result_ready = false;   /* 直進のテストの結果があって、まだ出していないか */
+static float s_result_distance_mm = 0.0f;  /* 直進のテストで、エンコーダで測った走った距離 [mm] */
+static float s_result_angle_deg = 0.0f;    /* 直進のテストで、ジャイロで測った向きの変わった量 [deg] */
+static int s_result_failsafe = 0;          /* 直進のテストで、フェイルセーフで止まったわけ（ctrl/control.h の番号。0 なら止まっていない） */
 
 /* 電池の電圧を読んで、シリアルに出す。下限より低ければ知らせる（ここでは止めない。止めるのはステップ9 で作る） */
 static void check_battery(void)
@@ -73,6 +96,7 @@ void app_init(void)
   printf("\r\nKOGUMA.Mk3.1 boot (SYSCLK %lu Hz)\r\n", timebase_get_sysclk_hz());
   wall_init();
   encoder_init();  /* 左右のエンコーダの磁石の状態をシリアルに出す */
+  odometry_init();
   motor_init();
   fan_init();
   if (imu_init()) {
@@ -110,10 +134,70 @@ static void show_walls(void)
   led_set_wall(4, front);                       /* 右前 */
 }
 
-/* スイッチを押しているあいだだけ、モーターに電圧をかける（ステップ5） */
+/* 直進のテストをする（ステップ7）。走り終わるか、フェイルセーフで止まるまで戻らない */
+static void run_straight_test(void)
+{
+  timebase_wait_ms(START_DELAY_MS);
+  imu_remeasure_offset();  /* ジャイロのゼロ点を測り直す（約 0.5 秒。ToraNeko と同じ） */
+  float start_distance_mm = odometry_get_distance_mm();
+  float start_angle_deg = imu_get_angle_deg();
+  failsafe_clear();
+
+  log_start(STRAIGHT_LOG_INTERVAL_MS);
+  control_set_wall_control(false);  /* 横の壁に沿って走る補正は入れない */
+  control_start();
+  trajectory_start_straight(STRAIGHT_DISTANCE_MM, STRAIGHT_SPEED_MM_S, 0.0f, STRAIGHT_ACCEL_MM_S2);
+  while (!trajectory_is_done() && !failsafe_is_stopped()) {
+    /* 走り終わるのを待つ（制御は割り込みの中で進む） */
+  }
+  if (!failsafe_is_stopped()) {
+    timebase_wait_ms(SETTLE_MS);  /* 目標の速さ 0 のまま制御を続けて、ぴたりと止める */
+  }
+  control_stop();
+  log_stop();
+  motor_stop();
+
+  s_result_distance_mm = odometry_get_distance_mm() - start_distance_mm;
+  s_result_angle_deg = imu_get_angle_deg() - start_angle_deg;
+  s_result_failsafe = control_get_failsafe_reason();
+  s_result_ready = true;
+  buzzer_beep(BOOT_BEEP_HZ, BOOT_BEEP_MS);  /* 走り終わった合図 */
+}
+
+/* 前センサに手をかざして離したら、直進のテストをする */
+static void update_straight_test(void)
+{
+  if (wall_ctrl_is_hand_front()) {
+    s_hand_seen = true;
+    return;
+  }
+  if (s_hand_seen) {
+    s_hand_seen = false;
+    run_straight_test();
+  }
+}
+
+/* 直進のテストの結果と走行ログをシリアルに出す（S2 を押したとき） */
+static void print_straight_result(void)
+{
+  printf("RESULT straight target=%.1f mm encoder=%.1f mm angle=%.2f deg failsafe=%d (0 none, 1 position, 2 angle, 3 slow, 4 stall)\r\n",
+         STRAIGHT_DISTANCE_MM, s_result_distance_mm, s_result_angle_deg, s_result_failsafe);
+  log_print();
+  s_result_ready = false;
+}
+
+/* スイッチを押しているあいだだけ、モーターに電圧をかける（ステップ5）。
+ * 直進のテストの結果がまだ出ていなければ、押したときに結果を出す（そのときはモーターは回さない） */
 static void update_motor_test(void)
 {
   bool pressed = switch_is_pressed();
+  if (pressed && s_result_ready) {
+    print_straight_result();
+    while (switch_is_pressed()) {
+      /* 離すまで待つ（続けてモーターが回らないように） */
+    }
+    return;
+  }
   if (pressed && !s_motor_on) {
     motor_set_voltage(MOTOR_TEST_V, MOTOR_TEST_V);
     s_motor_on = true;
@@ -158,6 +242,7 @@ void app_loop(void)
   }
 
   update_motor_test();
+  update_straight_test();
 
   if (now_ms - s_print_last_ms >= PRINT_STEP_MS) {
     s_print_last_ms = now_ms;
