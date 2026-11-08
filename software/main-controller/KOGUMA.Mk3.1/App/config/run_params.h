@@ -65,6 +65,12 @@
 #define SUCTION_SLALOM_PRE_MM  32.3f
 #define SUCTION_SLALOM_POST_MM 32.5f
 
+/* ---- 吸引の強さ（sys/suction.c・sys/explore.c・sys/adjust.c） ----
+ * KOGUMA.MkIIl の吸引探索は Suction_Start(35)：duty 35%（電池 15.8V のときの割合）なので、15.8 × 0.35 ＝ 5.5V。
+ * 調整の動き（モード2・4・6）で吸うときも、この強さ（ToraNeko.Mk3 と同じく 1 つの値） */
+#define SUCTION_VOLTAGE_V 5.5f
+#define SUCTION_RAMP_MS   500   /* 0 から SUCTION_VOLTAGE_V まで上げるのにかける時間 [ms]（急に回して電池の電圧が落ちないように） */
+
 /* ---- その場旋回・前壁合わせ・止まる ---- */
 
 #define PIVOT_OMEGA_DEG_S  600.0f    /* その場旋回の最高の角速度 [deg/s]（KOGUMA.MkIIl の Motor_trapezoid_Turn(90, 600, 20000)） */

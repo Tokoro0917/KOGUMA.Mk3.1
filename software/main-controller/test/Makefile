@@ -2,11 +2,14 @@
 #   make        ビルドしてテストを実行する
 #   make clean  ビルドしたものを消す
 #
-#   test_maze  迷路（App/maze/）。探索走行・最短走行（App/sys/explore.c・shortest.c）は、ステップ9・10 で足す
+#   test_maze  迷路（App/maze/）と探索走行（App/sys/explore.c）。最短走行（App/sys/shortest.c）は、ステップ10 で足す
 #   test_wall_dist  壁センサの値を距離 [mm] に直す処理（App/ctrl/wall_dist.c）
 #   test_trajectory  目標の速さを作る処理（App/ctrl/trajectory.c）
 #   test_turn  探索のスラロームと最短走行のターンの前距離・後距離（./test_turn --calc で計算して貼る行を出す）
 #   test_control  制御のフェイルセーフの見つけ方と、吸引中の摩擦の分の電圧、斜めの補正、向きを戻す（App/ctrl/control.c。センサ・モーターは仮）
+#   test_mode  モード選択と操作（App/sys/mode.c、ui.c、goal.c）。走る・調整する関数は仮
+#   test_output  出力と走行ログ（App/sys/output.c、log.c）。./test_output --dump ファイル で実機の出力を確かめる
+#   test_flash  迷路とゴールの位置の保存（App/sys/flash.c）。Flash は仮の配列
 
 APP_DIR = ../KOGUMA.Mk3.1/App
 
@@ -18,13 +21,35 @@ APP_HEADERS = $(wildcard $(APP_DIR)/*/*.h)
 MAZE_SOURCES = \
 	$(APP_DIR)/maze/maze_map.c \
 	$(APP_DIR)/maze/search.c \
-	$(APP_DIR)/maze/path.c
+	$(APP_DIR)/maze/path.c \
+	$(APP_DIR)/sys/explore.c
 
-test: test_maze test_wall_dist test_trajectory test_control test_turn
+MODE_SOURCES = \
+	$(APP_DIR)/sys/mode.c \
+	$(APP_DIR)/sys/ui.c \
+	$(APP_DIR)/sys/goal.c \
+	$(APP_DIR)/maze/maze_map.c
+
+OUTPUT_SOURCES = \
+	$(APP_DIR)/sys/output.c \
+	$(APP_DIR)/sys/log.c \
+	$(APP_DIR)/maze/maze_map.c \
+	$(APP_DIR)/maze/search.c \
+	$(APP_DIR)/maze/path.c \
+	$(APP_DIR)/maze/dijkstra.c
+
+FLASH_SOURCES = \
+	$(APP_DIR)/sys/flash.c \
+	$(APP_DIR)/maze/maze_map.c
+
+test: test_maze test_wall_dist test_trajectory test_control test_turn test_mode test_output test_flash
+	./test_mode
 	./test_trajectory
 	./test_turn
 	./test_control
 	./test_wall_dist
+	./test_output
+	./test_flash
 	./test_maze
 
 # dijkstra.c は test_maze.c の中で #include している（テストで中の関数を使うため）
@@ -43,7 +68,16 @@ test_control: test_control.c $(APP_DIR)/ctrl/control.c $(APP_DIR)/ctrl/trajector
 test_turn: test_turn.c $(APP_DIR)/ctrl/trajectory.c $(APP_HEADERS)
 	$(CC) $(CFLAGS) -o $@ test_turn.c $(APP_DIR)/ctrl/trajectory.c -lm
 
+test_mode: test_mode.c $(MODE_SOURCES) $(APP_HEADERS)
+	$(CC) $(CFLAGS) -o $@ test_mode.c $(MODE_SOURCES)
+
+test_output: test_output.c $(OUTPUT_SOURCES) $(APP_HEADERS)
+	$(CC) $(CFLAGS) -o $@ test_output.c $(OUTPUT_SOURCES) -lm
+
+test_flash: test_flash.c $(FLASH_SOURCES) $(APP_HEADERS)
+	$(CC) $(CFLAGS) -o $@ test_flash.c $(FLASH_SOURCES)
+
 clean:
-	rm -f test_maze test_wall_dist test_trajectory test_control test_turn
+	rm -f test_maze test_wall_dist test_trajectory test_control test_turn test_mode test_output test_flash
 
 .PHONY: test clean

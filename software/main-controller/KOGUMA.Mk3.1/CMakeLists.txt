@@ -56,6 +56,7 @@ set(APP_SOURCES
     App/drv/buzzer.c
     App/drv/encoder.c
     App/drv/fan.c
+    App/drv/flash_memory.c
     App/drv/imu.c
     App/drv/led.c
     App/drv/motor.c
@@ -67,9 +68,19 @@ set(APP_SOURCES
     App/maze/search.c
     App/maze/path.c
     App/maze/dijkstra.c
+    App/sys/adjust.c
+    App/sys/explore.c
     App/sys/failsafe.c
+    App/sys/flash.c
+    App/sys/goal.c
     App/sys/log.c
+    App/sys/mode.c
+    App/sys/output.c
     App/sys/scheduler.c
+    App/sys/sensor_record.c
+    App/sys/sensor_view.c
+    App/sys/suction.c
+    App/sys/ui.c
 )
 
 # Add sources to executable
