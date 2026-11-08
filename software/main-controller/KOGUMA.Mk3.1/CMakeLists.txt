@@ -69,6 +69,8 @@ set(APP_SOURCES
     App/maze/path.c
     App/maze/dijkstra.c
     App/sys/adjust.c
+    App/sys/edge_test.c
+    App/sys/encoder_cal.c
     App/sys/explore.c
     App/sys/failsafe.c
     App/sys/flash.c
@@ -77,6 +79,7 @@ set(APP_SOURCES
     App/sys/mode.c
     App/sys/output.c
     App/sys/scheduler.c
+    App/sys/sensor_noise.c
     App/sys/sensor_record.c
     App/sys/sensor_view.c
     App/sys/suction.c

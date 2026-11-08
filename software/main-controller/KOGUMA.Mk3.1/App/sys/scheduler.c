@@ -3,7 +3,7 @@
  * 制御周期（2kHz）の割り込みで、制御の処理を呼ぶ
  *
  * ■ もとにしたもの
- * ToraNeko.Mk3 の App/sys/scheduler.c（ecd8e10）。KOGUMA.Mk3.1 で変えたところ：TIM11 のクロック（180MHz）のコメント。まだないもの（エンコーダの歪みの記録 sys/encoder_cal.c）は呼ばない。
+ * ToraNeko.Mk3 の App/sys/scheduler.c（ecd8e10）。KOGUMA.Mk3.1 で変えたところ：TIM11 のクロック（180MHz）のコメント。エンコーダの歪みの記録（sys/encoder_cal.c）も ToraNeko.Mk3 と同じく呼ぶ。
  *
  * ■ 仕組み
  * TIM11 は 1MHz（1 カウント = 1µs）で数え、500 まで数えるたびに 0 に戻って割り込みを出す（0.5ms ごと = 2kHz）。
@@ -40,6 +40,7 @@
 #include "drv/timebase.h"
 #include "main.h"
 #include "tim.h"
+#include "sys/encoder_cal.h"
 
 #define TIMER_CLOCK_HZ 1000000  /* TIM11 が数える速さ [Hz]（CubeMX で 180MHz を 180 で割っている） */
 
@@ -51,12 +52,11 @@ static volatile uint32_t s_period_max_us = 0;
 static volatile uint32_t s_last_start_us = 0;          /* 前の回が始まった時刻 [µs] */
 static volatile bool s_has_last_start = false;         /* 前の回の時刻があるか（最初の 1 回は間隔を測れない） */
 
-/* 制御の処理。制御周期ごとに 1 回呼ばれる。
- * ToraNeko.Mk3 では、encoder_update() のあとにエンコーダの歪みの記録（sys/encoder_cal.c）も呼んでいる。
- * KOGUMA.Mk3.1 では、sys/encoder_cal.c を持ってくるときに足す */
+/* 制御の処理。制御周期ごとに 1 回呼ばれる */
 static void run_control(void)
 {
   encoder_update();
+  encoder_cal_record();  /* エンコーダの歪みを測っているときだけ、角度を記録する（モード6 No.6） */
   imu_update();
   odometry_update();     /* エンコーダから、速さと距離を求める */
   control_update();      /* 走っているときだけ、目標の速さ・向きになるようにモーターの電圧を決める */

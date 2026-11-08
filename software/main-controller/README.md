@@ -60,7 +60,7 @@ software/main-controller/
 ├── CUBEMX_SETUP.md               CubeMX の手順と .ioc の設定値
 ├── KOGUMA_PORTING.md             KOGUMA にしかない機能をどうするか、ToraNeko に合わせて KOGUMA の何をやめるか
 ├── MODES.md                      機体の操作とモード（作った。ステップ9）
-├── tools/                        viewer.html（ビューア）、wall_table.py（壁までの距離の表）、vscode/（書き込みのタスク）
+├── tools/                        viewer.html（ビューア）、wall_table.py（壁までの距離の表）、push_logs.sh（ログを送る）、vscode/（書き込みのタスク）（作った）
 ├── logs/                         実機の出力を残すフォルダ
 ├── test/                         PC 上で動かすテスト（CI で実行）。ホストの gcc でビルドするので、ARM 向けの CMake プロジェクトとは分ける
 │   ├── test_maze.c               迷路と探索走行のテスト（ToraNeko の test_maze.c を 16×16 にして、全面探索・既知区間の斜め・吸引探索のテストを足した）
@@ -126,10 +126,11 @@ software/main-controller/
             ├── shortest.c/.h     最短走行
             ├── adjust.c/.h       動きを 1 つずつ走らせて調整する（作った。吸引探索のスラローム・直線の加速の限界テスト・モーターの向きを足した）
             ├── turn_test.c/.h    最短走行のターンを 1 つずつ走らせる
-            ├── edge_test.c/.h    壁切れ・柱の見え方テスト
-            ├── encoder_cal.c/.h  エンコーダの歪みを測る
+            ├── edge_test.c/.h    壁切れ・柱の見え方テスト（作った）
+            ├── encoder_cal.c/.h  エンコーダの歪みを測る（作った）
             ├── sensor_view.c/.h  センサの値の表示、部品の確かめ（作った）
             ├── sensor_record.c/.h  センサの値の記録（壁までの距離の表を作る）（作った）
+            ├── sensor_noise.c/.h  吸引のときのセンサのノイズ（新）（作った。KOGUMA.MkIIl の SensorNoise.c）
             ├── suction.c/.h      吸引ファンを少しずつ上げて回し始める（作った）
             ├── log.c/.h          走行ログの記録と吸い出し
             ├── output.c/.h       出力（迷路と走行ログを、ビューアで読める形で PC へ出す）（作った）
@@ -179,7 +180,7 @@ ToraNeko.Mk3 では作り方を考えながら進めたが、KOGUMA.Mk3.1 では
 | 6 | 壁センサ | `drv/wall.c`, `ctrl/wall_ctrl.c`, `ctrl/wall_dist.c` | ADC1 の 5ch（電池＋4）、LED 2 組。しきい値と距離の表は KOGUMA.MkIIl の値（`WallDistance.c`）から | `PL_sensor.c`, `Wallsensor.c`, `WallDistance.c` | **作った**（2026-11-08。実機はまだ）。AD 値の読み取り（`drv/wall.c`）、壁のあり・なしと前壁合わせ・横の壁のずれ（`ctrl/wall_ctrl.c`。しきい値は KOGUMA.MkIIl の `Wallsensor.c` の値）、壁までの距離（`ctrl/wall_dist.c`。KOGUMA.MkIIl の `WallDistance.c` の表と会場ごとの倍率。区画のまん中で 84mm。PC テスト `test_wall_dist`）。受光の並びと発光の組は ToraNeko と同じ。KOGUMA.MkIIl は値をならして（10 回の平均など）使っていたが、ToraNeko と同じく、ならさずに使う。実機の値を見て、しきい値とならすかを決め直す |
 | 7 | 速度・角度の制御、探索の動き、フェイルセーフの見つけ方 | `ctrl/odometry.c`, `ctrl/trajectory.c`, `ctrl/control.c`, `ctrl/run.c`, `ctrl/side_edge.c`, `config/ctrl_gains.h` | 制御方法は ToraNeko のまま（[KOGUMA_PORTING.md](KOGUMA_PORTING.md) の E2・E3）。タイヤ径・トレッド・ギア比・区画 180mm。係数とフェイルセーフのしきい値は KOGUMA の機体で決め直す（フィードフォワードの初めの値は KOGUMA のログのモデルから） | `motor.c`, `Move.c`, `SpeedPlan.c`, `PillarEdge.c`, `Failsafe.c` | **速度・角度の制御を作った**（2026-11-08。実機はまだ）：速さと距離（`ctrl/odometry.c`。1 カウントの距離は KOGUMA.MkIIl の計算と同じ）、台形の目標（`ctrl/trajectory.c`）、制御とフェイルセーフの見つけ方（`ctrl/control.c`）、壁切れの端（`ctrl/side_edge.c`。値は仮）、フェイルセーフ（`sys/failsafe.c`）、走行ログ（`sys/log.c`。1600 行）。どれも ToraNeko のまま。係数は `config/ctrl_gains.h` に KOGUMA.MkIIl の値から換算して入れた（換算の表はそのファイルの先頭）。PC テスト `test_trajectory`・`test_control`。確かめは下の「確かめ方」の 11（直進）。**探索の動きも作った**（2026-11-08。`ctrl/run.c`。ToraNeko のまま、探索を吸引なし 500mm/s・吸引あり 1000mm/s の 2 とおりにした。値は KOGUMA.MkIIl の `Move.c` から `config/run_params.h` に入れ、スラロームの前距離・後距離は PC で計算した（`test/test_turn.c --calc`）。前壁補正・壁切れは測るだけ）。確かめは 12（スラローム） |
 | 8 | 迷路探索と最短経路 | `maze/*`, `test/` | `MAZE_SIZE` 16。テストの迷路を 16×16 に（KOGUMA.MkIIl の `mazes/` を使う） | `Maze.c` | **完了**（2026-11-08、PC テスト済み）。下の「ステップ8でやったこと」 |
-| 9 | 探索走行・モード・ログ・フェイルセーフ・保存 | `sys/*`, `drv/flash_memory.c`, `drv/switch.c`, `tools/viewer.html` | モードの割り当てを決める（MODES.md）。KOGUMA にしかない機能（全面探索、感度合わせなど）をどうするか（[KOGUMA_PORTING.md](KOGUMA_PORTING.md)） | `main.c`, `UI.c`, `LOG.c`, `Failsafe.c` | **モードの土台を作った**（2026-11-08。実機はまだ）：操作と合図（`sys/ui.c`。LED 8 個とブザー）、モード選択（`sys/mode.c`）、ゴール（`sys/goal.c`）、Flash への保存（`sys/flash.c`・`drv/flash_memory.c`）、ログ出力（`sys/output.c`）、調整の動き（`sys/adjust.c`）、センサの表示と記録（`sys/sensor_view.c`・`sensor_record.c`）、吸引（`sys/suction.c`）。どれも ToraNeko のまま、LED の並びと音、区画の大きさを KOGUMA に合わせた。モードは下の「モード一覧」と [MODES.md](MODES.md)。確かめ方は下の「確かめ方」。**探索も作った**（`sys/explore.c`。モード0 No.1〜7。ToraNeko の探索に、吸引探索とエセ全面探索を足した。PC テスト `test_maze` の [9] で、仮の機体で走らせて確かめた）。**壁切れのテスト、エンコーダの歪み、ビューア、吸引のときのセンサのノイズ（B7）はこのあと**。モード0 No.8〜12 はステップ10 |
+| 9 | 探索走行・モード・ログ・フェイルセーフ・保存 | `sys/*`, `drv/flash_memory.c`, `drv/switch.c`, `tools/viewer.html` | モードの割り当てを決める（MODES.md）。KOGUMA にしかない機能（全面探索、感度合わせなど）をどうするか（[KOGUMA_PORTING.md](KOGUMA_PORTING.md)） | `main.c`, `UI.c`, `LOG.c`, `Failsafe.c` | **モードの土台を作った**（2026-11-08。実機はまだ）：操作と合図（`sys/ui.c`。LED 8 個とブザー）、モード選択（`sys/mode.c`）、ゴール（`sys/goal.c`）、Flash への保存（`sys/flash.c`・`drv/flash_memory.c`）、ログ出力（`sys/output.c`）、調整の動き（`sys/adjust.c`）、センサの表示と記録（`sys/sensor_view.c`・`sensor_record.c`）、吸引（`sys/suction.c`）。どれも ToraNeko のまま、LED の並びと音、区画の大きさを KOGUMA に合わせた。モードは下の「モード一覧」と [MODES.md](MODES.md)。確かめ方は下の「確かめ方」。**探索も作った**（`sys/explore.c`。モード0 No.1〜7。ToraNeko の探索に、吸引探索とエセ全面探索を足した。PC テスト `test_maze` の [9] で、仮の機体で走らせて確かめた）。**壁切れのテスト（`sys/edge_test.c`）、エンコーダの歪み（`sys/encoder_cal.c`）、吸引のときのセンサのノイズ（`sys/sensor_noise.c`。B7）、ビューア（`tools/viewer.html`）・ログの残し方（`logs/README.md`・`tools/push_logs.sh`）・壁までの距離の表を作る道具（`tools/wall_table.py`）も作った**（2026-11-08）。モード0 No.8〜12 はステップ10 |
 | 10 | 最短走行（大回り・斜め）とターンの値 | `sys/shortest.c`, `sys/turn_test.c`, `config/turn_params.h`, `test/test_turn.c` | ターンの値は KOGUMA.MkIIl の 2000・2400 の値から。180mm の区画で `test_turn --calc` をやり直す | `Move.c`, `ShortParam.c` | `test/test_turn.c` を持ってきて、2000 のターンの前距離・後距離を計算し直した（2026-11-08。角加速度は KOGUMA の w_ac × 2/π、大回り 180° の角速度は幅が 180mm になる値）。2400 の値、実機で足す分はまだ |
 
 ### ステップ1〜7・9の確かめ方（作者にお願いすること）
@@ -216,7 +217,9 @@ ToraNeko.Mk3 では作り方を考えながら進めたが、KOGUMA.Mk3.1 では
 12. スラローム（モード2 No.1。ステップ7 の探索の動き）：11 の直進がまっすぐ走れてから。機体を**区画のまん中に**置き、前の区画と、その左の区画をあけておく。モード2（LED3）・No.1（LED8）を選んで S2 を押し、前センサに手をかざして離す
     - 次の区画の入口まで速くしながら進み、500mm/s のまま左にスラロームで曲がって、左の区画の**まん中**で止まる
     - 止まった位置が、区画のまん中から前後・左右に何 mm ずれたか、向きが何度ずれたかを見る（外にふくらんだか、内側に入ったか）
-13. 結果を出す（モード7 No.1）：11・12 のあと、ケーブルを挿して、モード7（LED2・LED3・LED4）・No.1（LED8）を選んで S2 を押し、前センサに手をかざして離す。`#BEGIN RESULT`（`Straight: target 564.0 mm, encoder ... mm, angle ... deg` か `Slalom: target 90.0 deg, gyro ... deg, encoder ... mm`）、迷路、走行ログ（`#BEGIN LOG` から `#END LOG` まで）、`#DONE` が出る。ビューア（`tools/viewer.html`）はまだないので、出た文字を全部そのまま Claude に貼る
+13. 結果を出す（モード7 No.1）：11・12 のあと、ケーブルを挿して、モード7（LED2・LED3・LED4）・No.1（LED8）を選んで S2 を押し、前センサに手をかざして離す。`#BEGIN RESULT`（`Straight: target 564.0 mm, encoder ... mm, angle ... deg` か `Slalom: target 90.0 deg, gyro ... deg, encoder ... mm`）、迷路、走行ログ（`#BEGIN LOG` から `#END LOG` まで）、`#DONE` が出る。
+    - ビューア（`tools/viewer.html`）で保存する：[logs/README.md](logs/README.md) の「残し方」のとおり、Chrome か Edge で `tools/viewer.html` を開き、「保存先フォルダ」で `software/main-controller/logs/` を選んでから「接続」し、モード7 No.1 を実行する。届いたデータが 1 つずつファイルになるので、`git logs`（同じ README の 6）で push する。Claude はそのファイルを読む
+    - ビューアを使わないときは、Serial Monitor に出た文字を全部そのまま Claude に貼る
     - 結果は、最後に走らせた 1 つだけ覚えている。11 と 12 は、それぞれ走らせたあとに 13 をする
 14. Claude に伝えること
    - 6〜13 のとおりになったか（ならなかったら、どこが違ったか。シリアルに出た文字はそのまま貼る）
@@ -245,12 +248,13 @@ ToraNeko.Mk3 では作り方を考えながら進めたが、KOGUMA.Mk3.1 では
 | 5 | 1 | センサ値の表示 | 作った |
 | 5 | 2 | センサ値の記録 | 作った |
 | 5 | 3 | 壁までの距離の表示 | 作った |
-| 5 | 4〜6 | 壁切れ・柱の見え方テスト | ステップ9 でこのあと作る |
+| 5 | 4〜6 | 壁切れ・柱の見え方テスト（500・1000・2000mm/s） | 作った |
 | 5 | 7 | 部品の確かめ | 作った（KOGUMA.Mk3.1 で足した） |
+| 5 | 8 | 吸引のときのセンサのノイズ（KOGUMA.MkIIl のモード3 No.10） | 作った（B7） |
 | 6 | 1 | 直進 | 作った |
 | 6 | 2 | モーターの向きの確かめ | 作った（KOGUMA.Mk3.1 で足した） |
 | 6 | 3 | 吸引 ON | 作った |
-| 6 | 6 | エンコーダの歪みを測る | ステップ9 でこのあと作る |
+| 6 | 6 | エンコーダの歪みを測る | 作った |
 | 6 | 7 | 壁に沿って直進 | 作った |
 | 7 | 1 | ログ出力 | 作った |
 | 7 | 2 | ゴールの位置を入れる | 作った |

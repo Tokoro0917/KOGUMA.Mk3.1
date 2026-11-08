@@ -61,12 +61,15 @@
 #include "drv/switch.h"
 #include "drv/timebase.h"
 #include "sys/adjust.h"
+#include "sys/edge_test.h"
+#include "sys/encoder_cal.h"
 #include "sys/explore.h"
 #include "sys/failsafe.h"
 #include "sys/flash.h"
 #include "sys/goal.h"
 #include "sys/mode.h"
 #include "sys/output.h"
+#include "sys/sensor_noise.h"
 #include "sys/sensor_record.h"
 #include "sys/sensor_view.h"
 #include "sys/ui.h"
@@ -530,6 +533,51 @@ void sensor_record_print(void)
   s_record_print_output_count = s_output_count;
 }
 
+/* 壁切れ・柱の見え方テスト（モード5 No.4〜6）・吸引のときのセンサのノイズ（No.8）・エンコーダの歪み（モード6 No.6）：
+ * 走らずに、呼ばれた回数・No.・時刻を覚える */
+static int s_edge_test_count = 0;
+static int s_edge_test_number = 0;
+static int s_noise_count = 0;
+static int s_noise_print_count = 0;
+static int s_noise_print_output_count = 0;  /* ノイズの表を出したときの、出力が呼ばれた回数（出力より前に出すか） */
+static int s_encoder_cal_count = 0;
+
+void edge_test_run(int number)
+{
+  s_edge_test_count = s_edge_test_count + 1;
+  s_edge_test_number = number;
+  s_run_time_ms = s_now_ms;
+}
+
+void sensor_noise_run(void)
+{
+  s_noise_count = s_noise_count + 1;
+  s_run_time_ms = s_now_ms;
+}
+
+void sensor_noise_print(void)
+{
+  s_noise_print_count = s_noise_print_count + 1;
+  s_noise_print_output_count = s_output_count;
+}
+
+void encoder_cal_run(void)
+{
+  s_encoder_cal_count = s_encoder_cal_count + 1;
+  s_run_time_ms = s_now_ms;
+}
+
+/* 上の仮の記録を 0 に戻す */
+static void reset_step9_tests(void)
+{
+  s_edge_test_count = 0;
+  s_edge_test_number = 0;
+  s_noise_count = 0;
+  s_noise_print_count = 0;
+  s_noise_print_output_count = 0;
+  s_encoder_cal_count = 0;
+}
+
 /* 調整の動きの結果を出す：出さずに、呼ばれたことと、そのときの出力の回数を覚える */
 void adjust_print_last_result(void)
 {
@@ -837,12 +885,12 @@ static void test_has_action(void)
         "モード4 は No.4〜12 を決定できて、No.13 はできない");
   check(mode_has_action(5, 1) && mode_has_action(5, 2) && mode_has_action(5, 3) && mode_has_action(5, 7),
         "モード5 は No.1〜3 と No.7 を決定できる");
-  check(!mode_has_action(5, 4) && !mode_has_action(5, 6) && !mode_has_action(5, 8),
-        "モード5 の No.4〜6（壁切れのテスト、まだない）と No.8 は決定できない");
+  check(mode_has_action(5, 4) && mode_has_action(5, 6) && mode_has_action(5, 8) && !mode_has_action(5, 9),
+        "モード5 の No.4〜6（壁切れのテスト）と No.8（センサのノイズ）は決定できて、No.9 はできない");
   check(mode_has_action(6, 1) && mode_has_action(6, 2) && mode_has_action(6, 3) && mode_has_action(6, 7),
         "モード6 は No.1〜3 と No.7 を決定できる");
-  check(!mode_has_action(6, 4) && !mode_has_action(6, 6),
-        "モード6 の No.4〜6（エンコーダの歪みなど、まだない）は決定できない");
+  check(!mode_has_action(6, 4) && !mode_has_action(6, 5) && mode_has_action(6, 6),
+        "モード6 の No.4・5 は決定できず、No.6（エンコーダの歪み）は決定できる");
   check(mode_has_action(7, 1) && mode_has_action(7, 2) && mode_has_action(7, 15) && !mode_has_action(7, 3),
         "モード7 は No.1・2・15 だけ決定できる");
 }
@@ -1154,6 +1202,46 @@ static void test_explore_results(void)
   check_leds_at(s_run_time_ms + 40, "11000011", "道がなくなったら、外側の 4 個を速く点滅させる（できなかった）");
 }
 
+/* 壁切れのテスト（モード5 No.4〜6）・センサのノイズ（No.8）・エンコーダの歪み（モード6 No.6）は、スタート待ちのあとに始まる */
+static void test_step9_tools(void)
+{
+  printf("[6] 壁切れのテスト・センサのノイズ・エンコーダの歪み\n");
+  bool edge_ok = true;
+  for (int number = 4; number <= 6; number++) {
+    reset_world();
+    reset_step9_tests();
+    mode_init();
+    select_and_start(5, number);
+    mode_run_once();
+    if (s_edge_test_count != 1 || s_edge_test_number != number || s_run_time_ms < 2000 + 1000) {
+      edge_ok = false;
+    }
+  }
+  check(edge_ok, "モード5 No.4〜6 で、壁切れのテストが選んだ No. で 1 回呼ばれる（スタート待ちのあと）");
+
+  reset_world();
+  reset_step9_tests();
+  mode_init();
+  select_and_start(5, 8);
+  mode_run_once();
+  check(s_noise_count == 1 && s_edge_test_count == 0 && s_run_time_ms >= 2000 + 1000,
+        "モード5 No.8 で、センサのノイズが 1 回呼ばれる（スタート待ちのあと）");
+
+  reset_world();
+  reset_step9_tests();
+  mode_init();
+  select_and_start(6, 6);
+  mode_run_once();
+  check(s_encoder_cal_count == 1 && s_run_time_ms >= 2000 + 1000, "モード6 No.6 で、エンコーダの歪みが 1 回呼ばれる（スタート待ちのあと）");
+
+  reset_world();
+  reset_step9_tests();
+  mode_init();
+  select_and_start(7, 1);
+  mode_run_once();
+  check(s_noise_print_count == 1 && s_noise_print_output_count == 0, "ログ出力で、センサのノイズの表を、迷路と走行ログより前に出す");
+}
+
 /* その場 180° 旋回（モード2 No.4）は、スタート待ちのあとに始まる */
 static void test_pivot(void)
 {
@@ -1368,6 +1456,7 @@ int main(void)
   test_sensor_record();
   test_explore_numbers();
   test_explore_results();
+  test_step9_tools();
   test_straight();
   test_pivot();
   test_slalom();

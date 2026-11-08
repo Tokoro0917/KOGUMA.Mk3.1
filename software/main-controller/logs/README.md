@@ -1,6 +1,42 @@
-# logs/
+# logs
 
-KOGUMA.Mk3.1 のファームウェアで走らせた実機の出力を置きます（ビューア `../tools/viewer.html` で保存したもの）。
+KOGUMA.Mk3.1 の実機の出力（走行ログ・迷路・センサ値の記録・調整の結果・センサのノイズ）を、1 つずつファイルにして残しておくフォルダ。
+ToraNeko.Mk3 の `software/main-controller/logs/README.md`（ecd8e10）と同じ形（ビューアと出力の形を ToraNeko.Mk3 から持ってきたため）。
+書き直す前の KOGUMA.MkIIl での実機の出力は、KOGUMA.MkIIl のリポジトリの `logs/` にある。値を決めるときは、まずそちらも見る。
+コミットして push すれば、あとから記録をまとめて見比べられる。Claude も元のデータをそのまま読める。
 
-- ファイル名と中身の形は、ToraNeko.Mk3 の `software/main-controller/logs/README.md` と同じにする（ビューアを ToraNeko.Mk3 から持ってくるときに、この README も書き直す）
-- 書き直す前の KOGUMA.MkIIl での実機の出力は、KOGUMA.MkIIl のリポジトリの `logs/` にある。値を決めるときは、まずそちらも見る
+## 残し方
+
+1. Windows の Chrome か Edge で `../tools/viewer.html` を開く（ネットは使わない）
+2. 「保存先フォルダ」を押して、このフォルダ（`software/main-controller/logs/`）を選ぶ
+3. 「接続」を押して、機体の USB シリアル（921600）を選ぶ。Tera Term や VS Code の Serial Monitor は閉じておく（同じ COM ポートは 1 つしか開けない）
+4. 測った条件があれば、「メモ」に書く（例：`R 64mm`、`最短 No.2`）。測るたびに書きかえる。
+   壁までの距離の表のために測るときは、`R 64mm`・`L 40mm`・`F 52mm` のように「センサの名前（R・L・F）と距離」だけを書く（`tools/wall_table.py` がこの形を読む）
+5. 機体でモード7 No.1（ログ出力）を実行する。届いたデータが 1 つずつ `日時_種類_メモ.txt` で保存される
+   （例：`20261025-031500_sensor_R-64mm.txt`。メモの空白は `-` になる）
+6. 保存したファイルをコミットして push する。ターミナルで `git logs` と打つだけでよい（`git pull` → `git add`（logs/ だけ）→ `git commit` → `git push` をまとめてする。中身は `../tools/push_logs.sh`）。
+   `git logs` は、最初に 1 回だけ、次の命令で作っておく（KOGUMA.Mk3.1 の中なら、どのフォルダで打ってもよい）：
+   `git config alias.logs '!bash software/main-controller/tools/push_logs.sh'`
+
+保存したファイルは、ビューアの「ファイルを開く」（複数まとめて選べる）か、ドラッグで開いて見られる。
+センサ値の記録をまとめて開くと、「読み込んだセンサ値の記録」に、メモごとの平均が並ぶ（コピーして表計算に貼れる）。
+
+## データの種類（`#BEGIN 種類 ... #END 種類`）
+
+| 種類 | 中身 | 出すところ |
+|---|---|---|
+| `RESULT` | 最後に走らせた調整の動き（直進・その場旋回・スラローム）の結果と、探索の待ち時間 | モード7 No.1（`sys/adjust.c`） |
+| `SENSOR` | センサ値の記録：壁センサ 4 つを 1 秒測った平均・最小・最大と、平均を今の表で直した距離（`名前,平均,最小,最大,距離mm`） | モード5 No.2 のすぐあと、モード7 No.1（`sys/sensor_record.c`） |
+| `MAZE` | 迷路と、まだ見ていない壁の数、最短走行の動きの並び | モード7 No.1（`sys/output.c`） |
+| `NOISE` | 吸引のときのセンサのノイズ：吸引 4 段（duty 0・35・50・70）ごとに、受光 4 つの点灯・消灯・差の平均・ばらつき・最小・最大と、電池の電圧 [mV]（KOGUMA.MkIIl の `SensorNoise.c` と同じ形） | モード5 No.8 のすぐあと、モード7 No.1（`sys/sensor_noise.c`） |
+| `LOG` | 走行ログ（KOGUMA と同じ列のあとに、IMU の前後の加速度 `acc_y` [mm/s²]。`#BEGIN LOG dt=… n=… div=… full=…`） | モード7 No.1（`sys/log.c`） |
+
+メモは、ファイルの 1 行目に `# memo: …` として入る（ビューアで開いたときに読み直す）。
+
+### 走行ログの列が、動作によって変わるところ（`phase` の列で見分ける）
+
+| `phase` | 動作 | 変わる列 |
+|---|---|---|
+| 2 | 斜めの直進（2026-11-04 から） | `sensor_L`・`sensor_R`：横のセンサのかわりに**左前・右前**の値。`dist_L`・`dist_R`：左前・右前から求めた距離（前の壁の表で直したもの。斜めでは目安）。`wall`：しきい値を超えた前のセンサ（1 左前、2 右前、0 なし）。`wall_err`：斜めの補正のずれ（+ なら左の柱・壁に近い）。`wall_p`・`wall_out`：斜めの補正で曲げた角速度 [deg/s]（+ なら右へ曲げた）。`wall_d` は 0 |
+| 1 | 直線で、向きを戻しているとき（`wall` が 0。2026-11-04 から） | `wall_err`：迷路の向きからのずれ [deg]（+ なら左を向いている）。`wall_p`・`wall_out`：戻す角速度 [deg/s]（+ なら右へ曲げた）。`wall_d` は 0 |
+| 10 | 前壁合わせ | `dist_L`・`dist_R`：左前・右前から求めた前の壁までの距離 |
