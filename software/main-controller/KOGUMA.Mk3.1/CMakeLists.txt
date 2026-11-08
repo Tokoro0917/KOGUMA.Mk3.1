@@ -46,6 +46,10 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # （ToraNeko.Mk3 と同じ書き方。ステップごとに 1 ファイルずつ足す。file(GLOB ...) は使わない）
 set(APP_SOURCES
     App/app.c
+    App/drv/buzzer.c
+    App/drv/led.c
+    App/drv/timebase.c
+    App/drv/uart.c
     App/maze/maze_map.c
     App/maze/search.c
     App/maze/path.c

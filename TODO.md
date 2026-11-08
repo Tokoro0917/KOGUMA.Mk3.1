@@ -8,6 +8,7 @@ KOGUMA.MkIIl の学生大会（2026-11-21〜22）までは、作者の実機の�
 
 - [x] ~~CubeMX でプロジェクトを作る~~ → 2026-11-08 に Claude が KOGUMA.MkIIl と ToraNeko.Mk3 のプロジェクトを写して作った（作者の提案）
 - [ ] （急がない）CubeMX で `KOGUMA.Mk3.1.ioc` を開いて、エラーなく開けるか・生成したコードが変わらないかを確かめる（手順は [software/main-controller/CUBEMX_SETUP.md](software/main-controller/CUBEMX_SETUP.md) の 1-2）
+- [ ] **ステップ1 を実機で確かめる**（書き込むと KOGUMA.MkIIl の大会用のファームウェアは消えるので、確かめたら書き戻す。手順は [software/main-controller/README.md](software/main-controller/README.md) の「ステップ1の確かめ方」）
 - [ ] **メイン基板の回路図**（PDF でよい）を `hardware/` に置く。とくに知りたいこと：PA10〜PA12 の用途、モータードライバの型番と TIM3 CH1〜4 のつながり、壁センサの受光と ADC チャンネル・発光の組の対応、電池の分圧の抵抗（[hardware/README.md](hardware/README.md)）
 - [x] PC とのシリアルに何を使っているか → STLINK-V3 の仮想 COM ポート。921600bps にする（2026-11-08）
 - [x] 決定事項の案と KOGUMA_PORTING.md の B の案を決める → 2026-11-08 のアンケートで決まった（下の「記録」）
@@ -15,7 +16,7 @@ KOGUMA.MkIIl の学生大会（2026-11-21〜22）までは、作者の実機の�
 ## 移植（software/main-controller/README.md の「実装の進め方」）
 
 - [x] ステップ0：CMake のプロジェクト（2026-11-08。KOGUMA.MkIIl と ToraNeko.Mk3 から作った。ビルドは警告なし。CI でビルドする）
-- [ ] ステップ1：LED・シリアル出力（921600bps）・ブザー
+- [ ] ステップ1：LED・シリアル出力（921600bps）・ブザー（2026-11-08 に作った。**作者に実機で確かめてもらう**：[software/main-controller/README.md](software/main-controller/README.md) の「ステップ1の確かめ方」）
 - [ ] ステップ2：制御周期の割り込み（TIM11、2kHz。ToraNeko と同じ）と処理時間の計測（TIM5）
 - [ ] ステップ3：エンコーダ（SPI3）
 - [ ] ステップ4：IMU（SPI1）

@@ -169,7 +169,7 @@ ToraNeko.Mk3 では作り方を考えながら進めたが、KOGUMA.Mk3.1 では
 | # | 内容 | 持ってくる ToraNeko.Mk3 のファイル | KOGUMA で変えるところ | KOGUMA.MkIIl の対応ファイル | 状態 |
 |---|---|---|---|---|---|
 | 0 | F446 用の CMake プロジェクト作成 | `CMakeLists.txt`、`cmake/`、`Core/`（ひな形）、`App/app.c` | `.ioc` と `Core/` を、KOGUMA.MkIIl の設定と決めた設定（2kHz・TIM11 など）に合わせる | `KOGUMA.MkIIl.ioc`、`Core/`、`Drivers/` | **完了**（2026-11-08。CubeMX を使わずに作った。[CUBEMX_SETUP.md](CUBEMX_SETUP.md) の 0。ビルドは警告なし、CI でも確かめる。実機と、CubeMX で開けるかはまだ） |
-| 1 | LED・シリアル出力（printf）・ブザー | `drv/led.c`, `drv/uart.c`, `drv/timebase.c` | LED 8 個＋壁の表示 4 個、USART2、ブザー（新） | `UI.c`, `syscalls.c` | |
+| 1 | LED・シリアル出力（printf）・ブザー | `drv/led.c`, `drv/uart.c`, `drv/timebase.c` | LED 8 個＋壁の表示 4 個、USART2（921600bps）、ブザー（新、`drv/buzzer.c`） | `UI.c`, `syscalls.c` | **作った**（2026-11-08。ビルドは警告なし。実機はまだ。下の「ステップ1の確かめ方」） |
 | 2 | 制御周期の割り込み | `sys/scheduler.c` | TIM11、2kHz（ToraNeko と同じ。タイマーのクロックが 180MHz なので PSC だけ違う） | `PL_timer.c` | |
 | 3 | エンコーダ | `drv/encoder.c` | SPI3、CS 2 本。磁石がモーターの軸ならギア比を掛ける。角度の歪みの補正（ToraNeko のモード6 No.6）を持ち込むか | `PL_encoder.c` | |
 | 4 | IMU | `drv/imu.c` | CS 名 `ICM_NSS` → `IMU_CS`。軸の向きと符号を確かめる | `lsm6dsr.c` | |
@@ -179,6 +179,27 @@ ToraNeko.Mk3 では作り方を考えながら進めたが、KOGUMA.Mk3.1 では
 | 8 | 迷路探索と最短経路 | `maze/*`, `test/` | `MAZE_SIZE` 16。テストの迷路を 16×16 に（KOGUMA.MkIIl の `mazes/` を使う） | `Maze.c` | **完了**（2026-11-08、PC テスト済み）。下の「ステップ8でやったこと」 |
 | 9 | 探索走行・モード・ログ・フェイルセーフ・保存 | `sys/*`, `drv/flash_memory.c`, `drv/switch.c`, `tools/viewer.html` | モードの割り当てを決める（MODES.md）。KOGUMA にしかない機能（全面探索、感度合わせなど）をどうするか（[KOGUMA_PORTING.md](KOGUMA_PORTING.md)） | `main.c`, `UI.c`, `LOG.c`, `Failsafe.c` | |
 | 10 | 最短走行（大回り・斜め）とターンの値 | `sys/shortest.c`, `sys/turn_test.c`, `config/turn_params.h`, `test/test_turn.c` | ターンの値は KOGUMA.MkIIl の 2000・2400 の値から。180mm の区画で `test_turn --calc` をやり直す | `Move.c`, `ShortParam.c` | |
+
+### ステップ1の確かめ方（作者にお願いすること）
+
+**注意：書き込むと、機体に入っている KOGUMA.MkIIl のファームウェア（大会用）は消える。** 学生大会（11-21〜22）の前なら、確かめたあとに CubeIDE で KOGUMA.MkIIl を書き戻すこと。
+
+1. GitHub Desktop で、ブランチ `claude/clever-ride-k9xfb3` に切り替えて、**Fetch origin → Pull** を押す（`software/main-controller/KOGUMA.Mk3.1/` に `CMakeLists.txt` などが入っていれば成功）
+2. VS Code で **File → Open Folder** を押し、`software/main-controller/KOGUMA.Mk3.1` フォルダを開く
+3. 書き込みのタスクを入れる（1 回だけ）：[tools/vscode/README.md](tools/vscode/README.md) の「入れ方」のとおり、`tools/vscode/tasks.json` を `KOGUMA.Mk3.1/.vscode/tasks.json` にコピーする
+4. 機体に STLINK-V3 をつなぎ、電源を入れる
+5. **Ctrl+Shift+B** を押す。下の「ターミナル」に、ビルドのあと `File download complete` と `MCU Reset` が出たら書き込みは成功
+6. 機体を見る。うまくいっていれば、次のようになる
+   - 電源を入れた（リセットした）ときに、ブザーが「ピッ」と短く鳴る
+   - 表示 LED が LED1 → LED8 の順に 1 個ずつ、0.1 秒ごとに点いていく（ぐるぐる回る）
+   - 壁の表示の LED（LEDF1〜4）も、1 個ずつ順に点いていく
+7. シリアルを見る：VS Code の Serial Monitor（ToraNeko.Mk3 と同じ拡張）で、STLINK の仮想 COM ポートを選び、**Baud rate を 921600** にして **Start Monitoring** を押す。機体のリセットボタンを押すと、
+   - `KOGUMA.Mk3.1 boot (SYSCLK 180000000 Hz)` と出る（180MHz で動いている）
+   - そのあと 1 秒ごとに `t=1000 ms us=... dropped=0` のような行が出る。`t` が 1000 ずつ、`us` が約 1000000 ずつ増え、`dropped` は 0 のまま
+8. Claude に伝えること
+   - 6・7 のとおりになったか（ならなかったら、どこが違ったか。シリアルに出た文字はそのまま貼る）
+   - LED が光った**順番と場所**（基板のどの LED が LED1〜8・LEDF1〜4 か。ステップ9 で、モードの番号や電池の合図（外側の 4 個）を決めるのに使う）
+   - ブザーの音の大きさ・高さ（KOGUMA.MkIIl と同じくらいか）
 
 ### ステップ8でやったこと（2026-11-08）
 
