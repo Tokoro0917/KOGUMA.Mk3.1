@@ -54,6 +54,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "config/run_params.h"
 #include "ctrl/wall_ctrl.h"
 #include "drv/buzzer.h"
 #include "drv/encoder.h"
@@ -578,6 +579,63 @@ static int s_turn_test_number = 0;
 static int s_diag_test_count = 0;
 static bool s_diag_test_correction = false;
 
+static int s_back_to_wall_count = 0;     /* 後ろの壁まで下がる（モード0 No.8〜11）が呼ばれた回数 */
+static int s_turn_back_count = 0;        /* その場で反対を向く（run_search_turn_back_at_center）が呼ばれた回数 */
+static int s_return_count = 0;           /* ゴールからスタートへ帰る探索（explore_return_from）が呼ばれた回数 */
+
+/* 後ろの壁まで下がる（run_search_back_to_start_wall）：呼ばれた回数を数える */
+void run_search_back_to_start_wall(void)
+{
+  s_back_to_wall_count = s_back_to_wall_count + 1;
+}
+
+int shortest_get_end_x(void)
+{
+  return 7;
+}
+
+int shortest_get_end_y(void)
+{
+  return 7;
+}
+
+direction_t shortest_get_end_dir(void)
+{
+  return DIR_NORTH;
+}
+
+float shortest_get_end_overshoot_mm(void)
+{
+  return 30.0f;
+}
+
+/* フェイルセーフで止まっているか：このテストでは、いつも止まっていない（mode.c が、探索のあとに続けて走るあいだに調べる） */
+bool failsafe_is_stopped(void)
+{
+  return false;
+}
+
+void run_search_turn_back_at_center(float forward_mm)
+{
+  (void)forward_mm;
+  s_turn_back_count = s_turn_back_count + 1;
+}
+
+explore_result_t explore_return_from(explore_type_t type, bool suction, int x, int y, direction_t dir, int goal_x,
+                                     int goal_y, int goal_width, int goal_height)
+{
+  (void)goal_x;
+  (void)goal_y;
+  (void)goal_width;
+  (void)goal_height;
+  s_return_count = s_return_count + 1;
+  /* 最短走行の止まった区画 (7, 7) で、反対（南）を向いて、未知壁探索＋既知区間加速・吸引で帰るはず */
+  if (type != EXPLORE_UNKNOWN_WALLS_KNOWN || !suction || x != 7 || y != 7 || dir != DIR_SOUTH) {
+    s_return_count = s_return_count + 100;  /* おかしな頼まれ方：テストで見つかるように、大きく数える */
+  }
+  return EXPLORE_RESULT_DONE;
+}
+
 bool shortest_has_route(int number, int goal_x, int goal_y)
 {
   (void)number;
@@ -923,8 +981,8 @@ static void test_select_and_start(void)
 static void test_has_action(void)
 {
   printf("[5] 決定できる番号\n");
-  check(!mode_has_action(0, 0) && mode_has_action(0, 1) && mode_has_action(0, 7) && !mode_has_action(0, 8),
-        "モード0（探索）は No.1〜7 だけ決定できる（No.8〜12 は最短走行を作ってから）");
+  check(!mode_has_action(0, 0) && mode_has_action(0, 1) && mode_has_action(0, 11) && !mode_has_action(0, 12),
+        "モード0（探索）は No.1〜11 だけ決定できる（No.12 はまだ）");
   check(!mode_has_action(1, 0) && mode_has_action(1, 1) && mode_has_action(1, 9) && !mode_has_action(1, 10),
         "モード1（最短走行）は No.1〜9 だけ決定できる");
   check(mode_has_action(3, 1) && mode_has_action(3, 7) && !mode_has_action(3, 8) && mode_has_action(3, 9) &&
@@ -1295,6 +1353,61 @@ static void test_step9_tools(void)
   check(s_noise_print_count == 1 && s_noise_print_output_count == 0, "ログ出力で、センサのノイズの表を、迷路と走行ログより前に出す");
 }
 
+/* 探索のあとに続けて最短走行（モード0 No.8〜11）：探索 1 回のあと、反対を向いて後ろの壁まで下がり、最短走行（No.5）を走る。
+ * No.11 は最短走行を 4 回、2 回目からは毎回ゴールから帰ってから走り、最後にもう一度帰って、全部走り終わった曲を鳴らす */
+static void test_search_then_shortest(void)
+{
+  printf("[6] 探索のあとに続けて最短走行（モード0 No.8〜11）\n");
+  explore_type_t types[12] = {EXPLORE_ROUND_TRIP, EXPLORE_ROUND_TRIP, EXPLORE_ALL_CELLS, EXPLORE_ONE_WAY,
+                              EXPLORE_ROUND_TRIP, EXPLORE_ALL_CELLS, EXPLORE_UNKNOWN_WALLS, EXPLORE_UNKNOWN_WALLS_KNOWN,
+                              EXPLORE_ROUND_TRIP, EXPLORE_ROUND_TRIP, EXPLORE_UNKNOWN_WALLS_KNOWN,
+                              EXPLORE_UNKNOWN_WALLS_KNOWN};
+  bool ok = true;
+  for (int number = 8; number <= 10; number++) {
+    reset_world();
+    reset_explore();
+    reset_step9_tests();
+    s_back_to_wall_count = 0;
+    s_turn_back_count = 0;
+    s_return_count = 0;
+    s_time_limit_ms = 200000;
+    mode_init();
+    select_and_start(0, number);
+    mode_run_once();
+    bool suction = true;
+    if (number == 8) {
+      suction = false;
+    }
+    if (s_explore_count != 1 || s_explore_type != types[number] || s_explore_suction != suction) {
+      ok = false;
+    }
+    if (s_shortest_count != 1 || s_shortest_number != SHORTEST_AFTER_SEARCH_NUMBER || s_turn_back_count != 1 ||
+        s_back_to_wall_count != 1 || s_return_count != 0) {
+      printf("  No.%d：最短走行 %d 回、反対を向く %d 回、下がる %d 回、帰る %d 回\n", number, s_shortest_count,
+             s_turn_back_count, s_back_to_wall_count, s_return_count);
+      ok = false;
+    }
+  }
+  check(ok, "No.8〜10：決めた探索を 1 回、そのあと反対を向いて後ろの壁まで下がり、最短走行（No.5）を 1 回");
+
+  reset_world();
+  reset_explore();
+  reset_step9_tests();
+  s_back_to_wall_count = 0;
+  s_turn_back_count = 0;
+  s_return_count = 0;
+  s_time_limit_ms = 200000;
+  mode_init();
+  select_and_start(0, 11);
+  mode_run_once();
+  printf("  No.11：最短走行 %d 回、反対を向く %d 回、下がる %d 回、帰る %d 回\n", s_shortest_count, s_turn_back_count,
+         s_back_to_wall_count, s_return_count);
+  check(s_explore_count == 1 && s_shortest_count == 4 && s_back_to_wall_count == 4,
+        "No.11：探索 1 回のあと、反対を向いて下がってから最短走行、を 4 回");
+  check(s_return_count == 4, "No.11：2〜4 回目の前と最後に、ゴールの区画 (7,7) から反対を向いて、吸引の未知壁探索で帰る（4 回）");
+  check(s_turn_back_count == 8, "No.11：最短走行の前（4 回）と、帰る前（4 回）に反対を向く");
+}
+
 /* 最短走行（モード1）・ターンの調整（モード3）・斜めの直進のテスト（モード4 No.2・3）が、選んだ No. で呼ばれる */
 static void test_step10_modes(void)
 {
@@ -1568,6 +1681,7 @@ int main(void)
   test_explore_results();
   test_step9_tools();
   test_step10_modes();
+  test_search_then_shortest();
   test_straight();
   test_pivot();
   test_slalom();

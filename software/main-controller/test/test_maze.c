@@ -2641,11 +2641,11 @@ void run_search_set_suction(bool on)
   s_sim_suction_values = on;
 }
 
-/* 吸引を上げる：走り出す前（スタート区画に置いたまま）でなければおかしい */
+/* 吸引を上げる：止まっているとき（スタート区画に置いたまま、またはゴールで止まって帰る前）でなければおかしい */
 void suction_ramp_up(void)
 {
-  if (!s_sim_at_start) {
-    sim_error("走り出したあとに、吸引を上げた");
+  if (!s_sim_stopped) {
+    sim_error("走っているあいだに、吸引を上げた");
   }
   s_sim_fan_on = true;
   s_sim_ramp_count = s_sim_ramp_count + 1;
@@ -2674,6 +2674,15 @@ void run_search_start(void)
   }
   s_sim_at_start = false;
   sim_go(DIR_NORTH);
+}
+
+/* 区画のまん中で止まっているところから、探索を始める（制御を始めるだけで、動かない。止まっているはず） */
+void run_search_start_at_center(void)
+{
+  if (!s_sim_stopped) {
+    sim_error("走っているのに、まん中からの探索を始めた");
+  }
+  s_sim_at_start = false;
 }
 
 /* 走っている → 1 区画まっすぐ進む */
@@ -3584,6 +3593,51 @@ static bool shortest_used_values(int number, run_turn_set_t set, float suction_v
   return ok;
 }
 
+/* 最短走行のあと、ゴールの区画のまん中から、探索しながらスタートへ帰る（モード0 No.11。explore_return_from）。
+ * ランダムな迷路で、未知壁探索＋既知区間加速で探索してから、ゴールの区画のまん中に（反対を向いて）置き、帰らせる */
+static void test_return_from_goal(int maze_count)
+{
+  printf("[9] 探索走行：最短走行のあと、ゴールから探索しながらスタートへ帰る：ランダムな迷路 %d 個\n", maze_count);
+  int fail_count = 0;
+  for (int maze_index = 0; maze_index < maze_count; maze_index++) {
+    s_random_seed = (unsigned int)(maze_index + 70001);
+    make_random_true_maze();
+    int best_set1_cost = best_route_cost_for(SHORTEST_PLAN_SET1_NUMBER);
+    int best_set2_cost = best_route_cost_for(SHORTEST_PLAN_SET2_NUMBER);
+    maze_map_init();
+    /* 1. 片道で、ゴールまで探索する（帰りの探索で、まだ見ていない壁が残るように） */
+    sim_place_at_start(-1);
+    explore_run(EXPLORE_ONE_WAY, false, s_goal_x, s_goal_y, s_goal_width, s_goal_height);
+    /* 2. ゴールの区画のまん中で、反対を向いて止まっているところから、帰らせる */
+    int x = s_sim_x;
+    int y = s_sim_y;
+    direction_t dir = maze_turn_back(s_sim_dir);
+    sim_place_at_start(-1);
+    s_sim_x = x;
+    s_sim_y = y;
+    s_sim_dir = dir;
+    s_sim_at_start = false;
+    explore_result_t result = explore_return_from(EXPLORE_UNKNOWN_WALLS_KNOWN, true, x, y, dir, s_goal_x, s_goal_y,
+                                                  s_goal_width, s_goal_height);
+    bool ok = (result == EXPLORE_RESULT_DONE) && (s_sim_error_count == 0) && s_sim_stopped;
+    if (s_sim_x != 0 || s_sim_y != 0 || s_sim_save_count != 1 || count_wrong_walls() != 0) {
+      ok = false;
+    }
+    if (s_sim_fan_on || s_sim_suction_values) {
+      ok = false;
+    }
+    if (recorded_route_cost_for(SHORTEST_PLAN_SET1_NUMBER) != best_set1_cost ||
+        recorded_route_cost_for(SHORTEST_PLAN_SET2_NUMBER) != best_set2_cost) {
+      ok = false;
+    }
+    if (!ok) {
+      fail_count = fail_count + 1;
+    }
+  }
+  printf("  うまくいかなかった走行 %d 回\n", fail_count);
+  check(fail_count == 0, "ゴールから、最短走行の組 1・組 2 の経路の壁を全部見て、スタートの区画のまん中で止まり、保存する");
+}
+
 /* ランダムな迷路（ゴールが 2×2 のもの）と、壁のない迷路で、No.1〜9 を走らせる */
 static void test_shortest_runs(int maze_count)
 {
@@ -3674,6 +3728,7 @@ int main(void)
   test_explore_forgets_previous_records();
   test_explore_random(300, 3140);
   test_shortest_runs(300);
+  test_return_from_goal(300);
 
   if (s_fail_count == 0) {
     printf("すべて成功\n");

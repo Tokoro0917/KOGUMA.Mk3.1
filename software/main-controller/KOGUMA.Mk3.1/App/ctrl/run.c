@@ -692,6 +692,72 @@ void run_search_align_to_side(bool is_left)
   control_stop();
 }
 
+/* 区画のまん中で止まっているところから、探索を始める（KOGUMA.Mk3.1 で足した。モード0 No.11 で、最短走行のあと
+ * ゴールからスタートへ帰るとき）。制御とログを始めるだけで、機体は動かない（このあと run_search_go_from_center() で発進する）。
+ * 迷路の向きの基準は、今の向き（最短走行で止まったときの向き。区画の向きにそろっているとする） */
+void run_search_start_at_center(void)
+{
+  if (failsafe_is_stopped()) {
+    return;
+  }
+  start_control();
+  control_set_heading_auto_reset(true);
+  control_stop();  /* 止まっている状態（run.h の約束 2）にする。発進するときに run_search_go_from_center() が始め直す */
+}
+
+#define TURN_BACK_FORWARD_SPEED_MM_S 200.0f  /* 反対を向いたあと、まん中まで戻るときの速さ [mm/s]（ゆっくり） */
+#define BACK_TO_WALL_SPEED_MM_S      100.0f  /* 後ろの壁まで下がるときの速さ [mm/s]（ゆっくり。KOGUMA.MkIIl の Motor_Back も遅い） */
+#define BACK_TO_WALL_ACCEL_MM_S2     1000.0f /* 同じく、加速度 [mm/s²] */
+
+/* 止まっている → その場で反対を向いて（左に 90° を 2 回）、区画のまん中で止まる（KOGUMA.Mk3.1 で足した。モード0 No.8〜11）。
+ * forward_mm は、反対を向いたあとに、まん中まで進む距離 [mm]（区画のまん中より forward_mm 先で止まっていたとき。
+ * 最短走行がゴールにターンで入って、まん中を過ぎて止まったとき）。
+ * 回る前に前に壁があれば前壁合わせをする（U ターンと同じ）。そのときは前の壁でまん中に直るので、forward_mm は使わない。
+ * 終わったら、モーターの出力を 0 にして止まっている（run.h の約束 2） */
+void run_search_turn_back_at_center(float forward_mm)
+{
+  if (failsafe_is_stopped()) {
+    return;
+  }
+  control_restart();  /* 止まっているので、制御を始め直す（迷路の向きの基準は、そのまま） */
+  if (wall_ctrl_has_wall_front()) {
+    forward_mm = 0.0f;  /* 前の壁で、区画のまん中に直る */
+  }
+  align_if_front_wall();
+  pivot(90.0f);           /* 1 回目の 90°。前には、もとの右の壁が来る */
+  align_if_front_wall();
+  pivot(90.0f);           /* 2 回目の 90°。これで反対を向く */
+  if (forward_mm > 1.0f && !failsafe_is_stopped()) {
+    trajectory_start_straight(forward_mm, TURN_BACK_FORWARD_SPEED_MM_S, 0.0f, s_search.accel_mm_s2);
+    wait_until_done();
+  }
+  if (failsafe_is_stopped()) {
+    return;
+  }
+  timebase_wait_ms(STOP_SETTLE_MS);  /* 目標の速さ 0 のまま制御を続けて、ぴたりと止める */
+  control_stop();
+}
+
+/* 止まっている（スタート区画のまん中で、北を向いて）→ 後ろの壁まで下がって、お尻を後ろの壁に付けたところで止まる
+ * （KOGUMA.Mk3.1 で足した。KOGUMA.MkIIl の Motor_Back）。探索でスタートに戻ったあと、続けて最短走行をするときに、
+ * ふつうに置いたときと同じ位置（タイヤの軸が区画のまん中より START_OFFSET_MM 後ろ）にする。
+ * 下がる距離は、区画のまん中からその位置まで（START_OFFSET_MM）。終わったら、モーターの出力を 0 にして止まっている */
+void run_search_back_to_start_wall(void)
+{
+  if (failsafe_is_stopped()) {
+    return;
+  }
+  control_restart();  /* 止まっているので、制御を始め直す（迷路の向きの基準は、そのまま） */
+  control_set_wall_control(false);  /* 下がるあいだは、横の壁に沿って走る補正を入れない */
+  trajectory_start_straight_back(START_OFFSET_MM, BACK_TO_WALL_SPEED_MM_S, BACK_TO_WALL_ACCEL_MM_S2);
+  wait_until_done();
+  if (failsafe_is_stopped()) {
+    return;
+  }
+  timebase_wait_ms(STOP_SETTLE_MS);  /* 目標の速さ 0 のまま制御を続けて、ぴたりと止める */
+  control_stop();
+}
+
 /* 止まっている → 前に壁があれば前壁合わせをして、その場で向きを変えて（turn）、
  * 次の区画の入口の辺まで、速くしながら進む。U ターンは、左に 90° 回るたびに、前に壁があれば前壁合わせをする */
 void run_search_go_from_center(run_turn_t turn)

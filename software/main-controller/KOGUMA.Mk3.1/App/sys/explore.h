@@ -17,12 +17,15 @@
  *
  * ■ 使い方
  * 機体をスタート区画に北向きに置いてから explore_run() を呼ぶ。走り終わるまで戻ってこない。
+ * 区画のまん中で止まっているところから、スタートへ帰るときは explore_return_from()（最短走行のあと。モード0 No.11）。
  * 迷路は、今 RAM にある迷路の続きから使う（電源を入れた直後なら空の迷路）。
  */
 #ifndef SYS_EXPLORE_H
 #define SYS_EXPLORE_H
 
 #include <stdbool.h>
+
+#include "maze/maze_map.h"
 
 /* 探索の走り方 */
 typedef enum {
@@ -43,5 +46,7 @@ typedef enum {
 
 explore_result_t explore_run(explore_type_t type, bool suction, int goal_x, int goal_y, int goal_width,
                              int goal_height);
+explore_result_t explore_return_from(explore_type_t type, bool suction, int x, int y, direction_t dir, int goal_x,
+                                     int goal_y, int goal_width, int goal_height);
 
 #endif /* SYS_EXPLORE_H */

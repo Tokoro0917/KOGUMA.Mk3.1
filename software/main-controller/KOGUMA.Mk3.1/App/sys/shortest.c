@@ -10,6 +10,8 @@
  *   - ターンの組（組 2000・組 2400）と吸引の強さを、No. ごとに選ぶ
  *   - 経路を選ぶときのターンの速さを、その No. のターンの組の速さにした（ToraNeko.Mk3 は、どの No. も 500mm/s）
  *   - 未知壁探索（sys/explore.c）が、最短走行の組ごとの経路を求められるように、shortest_set_route_cost() を出した（B15）
+ *   - 最短走行のあとにスタートへ帰れるように、止まった区画・向き・まん中を過ぎた距離を返す関数（shortest_get_end_*）を
+ *     足した（モード0 No.11）
  *
  * RAM の迷路で、スタートからゴールまでの最短経路を作り、その経路のとおりに走って、ゴールの区画で止まる。
  * まだ見ていない壁は「ある」とみなす。No. で走り方と速さを選ぶ（config/run_params.h の SHORTEST1〜5）。
@@ -64,6 +66,10 @@
 #define SPEED_NO_LIMIT_MM_S      100000.0f /* 「速さの上限なし」を表す、どの速さより大きい値 [mm/s] */
 
 static path_t s_path;  /* 最短経路（大きいので、関数の中ではなくここに置く） */
+
+/* 最後に止まったところが、ゴールの区画のまん中より何 mm 先か（ゴールにターンで入って止まったとき。直進で止まったら 0）。
+ * 最短走行のあとにスタートへ帰るとき（モード0 No.11）に、区画のまん中へ戻すために使う */
+static float s_end_overshoot_mm = 0.0f;
 
 /* No. ごとの値（config/run_params.h の SHORTEST1〜9。KOGUMA.Mk3.1 で、ToraNeko.Mk3 の No. ごとの関数を 1 つの表にまとめた） */
 typedef struct {
@@ -230,12 +236,18 @@ bool shortest_has_route(int number, int goal_x, int goal_y)
   return make_path(number, goal_x, goal_y);
 }
 
+/* スタート区画の南の辺から、タイヤの軸までの距離 [mm]（先頭のコメントの「■ スタートの位置」。66mm） */
+static float straight_start_offset_mm(void)
+{
+  return HALF_CELL_MM - START_OFFSET_MM;
+}
+
 /* 経路の i 番目の直進の長さ [mm]。最初の直進は、スタートの置き方の分だけ短くする（先頭のコメント） */
 static float straight_distance_mm(int i)
 {
   float distance_mm = s_path.steps[i].half_count * HALF_CELL_MM;
   if (i == 0) {
-    distance_mm = distance_mm - (HALF_CELL_MM - START_OFFSET_MM);
+    distance_mm = distance_mm - straight_start_offset_mm();
   }
   return distance_mm;
 }
@@ -247,7 +259,7 @@ static float straight_distance_mm(int i)
 static float straight_start_in_cell_mm(int i)
 {
   if (i == 0) {
-    return HALF_CELL_MM - START_OFFSET_MM;
+    return straight_start_offset_mm();
   }
   motion_t before = s_path.steps[i - 1].motion;
   if (before == MOTION_TURN_LEFT || before == MOTION_TURN_RIGHT) {
@@ -416,6 +428,7 @@ static void run_diagonal_path(int number)
     /* ゴールにターンで入って、区画のまん中に今の速さで着いた：そこから止まる（SHORTEST_STOP_DISTANCE_MM 以内） */
     float stop_mm = speed_mm_s * speed_mm_s / (2.0f * SHORTEST_STOP_ACCEL_MM_S2);
     run_fast_stop(stop_mm, speed_mm_s, SHORTEST_STOP_ACCEL_MM_S2);
+    s_end_overshoot_mm = stop_mm;
   }
 }
 
@@ -429,6 +442,7 @@ static void start_suction(int number)
 /* 最短走行をする（流れは先頭のコメント）。number は No.（走り方と速さを選ぶ） */
 shortest_result_t shortest_run(int number, int goal_x, int goal_y)
 {
+  s_end_overshoot_mm = 0.0f;
   if (!make_path(number, goal_x, goal_y)) {
     return SHORTEST_RESULT_NO_ROUTE;
   }
@@ -459,4 +473,26 @@ shortest_result_t shortest_run(int number, int goal_x, int goal_y)
     return SHORTEST_RESULT_FAILSAFE;
   }
   return SHORTEST_RESULT_DONE;
+}
+
+/* 最後の最短走行で止まった区画と向き（経路の終わり。maze/path.h の end_x・end_y・end_dir） */
+int shortest_get_end_x(void)
+{
+  return s_path.end_x;
+}
+
+int shortest_get_end_y(void)
+{
+  return s_path.end_y;
+}
+
+direction_t shortest_get_end_dir(void)
+{
+  return s_path.end_dir;
+}
+
+/* 最後の最短走行で止まったところが、その区画のまん中より何 mm 先か（ゴールにターンで入ったとき。直進で止まったら 0） */
+float shortest_get_end_overshoot_mm(void)
+{
+  return s_end_overshoot_mm;
 }

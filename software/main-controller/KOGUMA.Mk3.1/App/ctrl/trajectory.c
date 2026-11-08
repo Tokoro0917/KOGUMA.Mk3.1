@@ -3,7 +3,9 @@
  * 目標の速さ・角速度を作る（台形加減速）
  *
  * ■ もとにしたもの
- * ToraNeko.Mk3 の App/ctrl/trajectory.c（ecd8e10）。KOGUMA.Mk3.1 で変えたところ：なし。
+ * ToraNeko.Mk3 の App/ctrl/trajectory.c（ecd8e10）。KOGUMA.Mk3.1 で変えたところ：後ろへ下がる直進
+ * trajectory_start_straight_back() を足した（スタート区画で後ろの壁まで下がる。モード0 No.8〜11）。そのため、直進の目標の
+ * 速さ・加速度・距離の get の関数に、向き（s_direction。前に進むなら 1、下がるなら −1）を掛けるようにした。
  *
  * ■ 台形加減速
  * 速さを時間で書くと、台形の形になる動き方。
@@ -47,7 +49,7 @@
 static volatile bool s_running = false;    /* 動きの途中か */
 static volatile trajectory_kind_t s_kind = TRAJECTORY_STRAIGHT;  /* 今の動きの種類 */
 static volatile float s_forward_speed_mm_s = 0.0f;  /* スラロームのあいだの、前に進む速さ（一定） */
-static volatile float s_direction = 1.0f;  /* 旋回の向き（左回り 1、右回り -1）。直進は 1 */
+static volatile float s_direction = 1.0f;  /* 旋回の向き（左回り 1、右回り -1）。直進は前に進むなら 1、後ろに下がるなら -1 */
 static volatile float s_speed = 0.0f;      /* 今の目標の速さ（直進は mm/s、旋回は deg/s。いつも + ） */
 static volatile float s_accel = 0.0f;      /* 今の目標の加速度（加速中 +、減速中 -、それ以外 0） */
 static volatile float s_amount = 0.0f;     /* この動きで進んだ量（直進は mm、旋回は deg。いつも + ） */
@@ -89,6 +91,28 @@ void trajectory_start_straight(float distance_mm, float max_speed_mm_s, float en
   s_goal_amount = distance_mm;
   s_max_speed = max_speed_mm_s;
   s_end_speed = end_speed_mm_s;
+  s_accel_limit = accel_mm_s2;
+  s_amount = 0.0f;
+  s_running = true;   /* 最後に、動いているにする */
+}
+
+/* 止まっているところから、後ろへ distance_mm 下がる動きを始める（KOGUMA.Mk3.1 で足した。ToraNeko.Mk3 にはない）。
+ * 最高速 max_speed_mm_s まで accel_mm_s2 で速くし、止まって終わる。目標の速さ・加速度・進んだ距離は − になる
+ * （s_direction を −1 にして、下の get の関数が − を掛ける）。
+ * 探索でスタートに戻ったあと、続けて最短走行をするために、お尻を後ろの壁に付けるのに使う（KOGUMA.MkIIl の Motor_Back） */
+void trajectory_start_straight_back(float distance_mm, float max_speed_mm_s, float accel_mm_s2)
+{
+  s_running = false;  /* 書いているあいだは、割り込みに使わせない */
+  s_kind = TRAJECTORY_STRAIGHT;
+  s_overrun_mm = 0.0f;  /* 止まっているところから始めるので、進んだ分はない */
+  if (distance_mm < MIN_DISTANCE_MM) {
+    distance_mm = MIN_DISTANCE_MM;
+  }
+  s_direction = -1.0f;
+  s_speed = 0.0f;
+  s_goal_amount = distance_mm;
+  s_max_speed = max_speed_mm_s;
+  s_end_speed = 0.0f;
   s_accel_limit = accel_mm_s2;
   s_amount = 0.0f;
   s_running = true;   /* 最後に、動いているにする */
@@ -212,7 +236,7 @@ trajectory_kind_t trajectory_get_kind(void)
 float trajectory_get_speed_mm_s(void)
 {
   if (s_kind == TRAJECTORY_STRAIGHT) {
-    return s_speed;
+    return s_direction * s_speed;  /* 後ろに下がるとき（trajectory_start_straight_back）は − */
   }
   if (s_kind == TRAJECTORY_SLALOM) {
     return s_forward_speed_mm_s;
@@ -224,7 +248,7 @@ float trajectory_get_speed_mm_s(void)
 float trajectory_get_accel_mm_s2(void)
 {
   if (s_kind == TRAJECTORY_STRAIGHT) {
-    return s_accel;
+    return s_direction * s_accel;
   }
   return 0.0f;
 }
@@ -233,7 +257,7 @@ float trajectory_get_accel_mm_s2(void)
 float trajectory_get_distance_mm(void)
 {
   if (s_kind == TRAJECTORY_STRAIGHT) {
-    return s_amount;
+    return s_direction * s_amount;
   }
   return 0.0f;
 }

@@ -2,7 +2,8 @@
  * test_trajectory.c
  * 目標の速さ・角速度を作る処理（ctrl/trajectory.c）の PC 上でのテスト。実機がなくても動く
  *
- * ToraNeko.Mk3 の software/main-controller/test/test_trajectory.c（ecd8e10）をそのまま写した（ctrl/trajectory.c は ToraNeko と同じ）。
+ * ToraNeko.Mk3 の software/main-controller/test/test_trajectory.c（ecd8e10）を写した。KOGUMA.Mk3.1 で、後ろへ下がる直進
+ * （trajectory_start_straight_back()。KOGUMA.Mk3.1 で足した）のテスト 9 を足した。
  *
  * ビルドと実行（このフォルダで）:  make
  *
@@ -16,6 +17,7 @@
  *   7. 動きと動きのあいだ（探索の計算のあいだ）に進んだ分は、次の直進から引く
  *   6. スラローム：前に進む速さは一定のまま、角速度を台形にして 90° 曲がる。曲がったあとの直進は、その速さから始まる
  *   8. 直進の途中で距離を足し引きする（壁切れ）：足した分だけ長く・短く進み、終わりの速さで終わる
+ *   9. 後ろへ下がる直進：目標の速さ・距離が − になり、ちょうど決めた距離だけ下がって止まる。そのあとの前への直進はふつうに走る
  */
 #include <math.h>
 #include <stdbool.h>
@@ -292,6 +294,38 @@ static void test_add_distance(void)
         "もう進んだ量より短くはならない（すぐに終わる）");
 }
 
+/* 9. 後ろへ下がる直進（KOGUMA.Mk3.1 で足した）：24mm を、最高 100mm/s・1000mm/s² で下がる */
+static void test_straight_back(void)
+{
+  printf("[9] 後ろへ下がる直進\n");
+  trajectory_reset();
+  trajectory_start_straight_back(24.0f, 100.0f, 1000.0f);
+  float lowest_speed = 0.0f;
+  float position_mm = 0.0f;
+  int steps = 0;
+  while (!trajectory_is_done() && steps < MAX_STEPS) {
+    trajectory_update();
+    float speed = trajectory_get_speed_mm_s();
+    if (speed < lowest_speed) {
+      lowest_speed = speed;
+    }
+    position_mm = position_mm + speed * CTRL_PERIOD_S;
+    steps = steps + 1;
+  }
+  printf("  いちばん速いとき %.1f mm/s、進んだ距離 %.2f mm（目標の距離 %.2f mm）\n", lowest_speed, position_mm,
+         trajectory_get_distance_mm());
+  check(lowest_speed < -99.0f && lowest_speed >= -100.001f, "目標の速さは −（後ろ向き）で、最高 100mm/s まで");
+  check(fabsf(trajectory_get_distance_mm() + 24.0f) < 0.001f, "目標の距離は、ちょうど −24mm");
+  check(fabsf(position_mm + 24.0f) < 0.5f, "速さを足していくと、24mm 下がっている（±0.5mm）");
+  check(trajectory_get_speed_mm_s() == 0.0f && trajectory_get_accel_mm_s2() == 0.0f, "止まって終わる");
+
+  trajectory_start_straight(90.0f, 300.0f, 0.0f, 1000.0f);
+  trajectory_update();
+  check(trajectory_get_speed_mm_s() > 0.0f, "そのあとの前への直進は、前向き（+）の速さで走る");
+  run_until_done();
+  check(fabsf(trajectory_get_distance_mm() - 90.0f) < 0.001f, "前への直進は、ちょうど 90mm 進む");
+}
+
 int main(void)
 {
   test_trapezoid();
@@ -302,6 +336,7 @@ int main(void)
   test_slalom();
   test_gap_between_moves();
   test_add_distance();
+  test_straight_back();
 
   if (s_fail_count == 0) {
     printf("すべて成功\n");

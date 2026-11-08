@@ -194,6 +194,28 @@ void ui_signal_error(void)
   }
 }
 
+/* 全部の走行が終わってスタートに戻ったときの曲（KOGUMA.MkIIl の UI.c の Buzzer_Finish と同じ。モード0 No.11）。
+ * 音を鳴らしているあいだは 8 個全部を点け、休み（高さ 0）のあいだは消す（約 2.2 秒） */
+#define FINISH_NOTE_COUNT 9
+static const uint32_t FINISH_TONE_HZ[FINISH_NOTE_COUNT] = {392, 523, 659, 784, 0, 659, 784, 0, 1047};  /* ソ ド ミ ソ − ミ ソ − ド */
+static const uint32_t FINISH_TONE_MS[FINISH_NOTE_COUNT] = {150, 150, 150, 300, 80, 150, 450, 80, 700};
+
+void ui_play_finish(void)
+{
+  for (int i = 0; i < FINISH_NOTE_COUNT; i++) {
+    if (FINISH_TONE_HZ[i] == 0) {
+      buzzer_off();
+      ui_all_off();
+    } else {
+      buzzer_on(FINISH_TONE_HZ[i]);
+      ui_all_on();
+    }
+    ui_wait_ms(FINISH_TONE_MS[i]);
+  }
+  buzzer_off();
+  ui_all_off();
+}
+
 /* 時刻 until_ms [ms] になるまで待つ。待っているあいだに押されたスイッチは読み捨てる（あとで「押された」と答えないようにする）。
  * 待つ回数ではなく時刻で決めるのは、実機の 1 回の待ち（HAL_Delay）が少し長くなることがあり、回数で数えるとずれがたまるため */
 static void wait_until_ignoring_switch(uint32_t until_ms)

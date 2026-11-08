@@ -11,6 +11,7 @@
  *     （下の「■ エセ全面探索」）
  *   - 既知区間加速は、No.7（未知壁探索＋既知区間加速）だけ（ToraNeko.Mk3 の No.4 と同じ）
  *   - 迷路は 16×16 なので、MOVE_LIMIT のコメントを直した
+ *   - 最短走行でゴールに着いたあと、そこからスタートへ帰る探索 explore_return_from() を足した（モード0 No.11）
  *   - 未知壁探索で、最短走行の値の組（組 1・組 2）ごとの経路の壁を全部見る（KOGUMA.MkIIl と同じ。B15。下の plan_unknown_walls()）
  *
  * ■ 機体の位置
@@ -571,6 +572,54 @@ explore_result_t explore_run(explore_type_t type, bool suction, int goal_x, int 
   }
 
   /* 5. 帰り：スタートまで戻って止まる */
+  search_set_target(0, 0, 1, 1);
+  result = run_to_target();
+  if (result != EXPLORE_RESULT_DONE) {
+    return finish_early(result);
+  }
+  return finish_done();
+}
+
+/* 区画 (x, y) のまん中で、向き dir を向いて止まっているところから、スタートへ帰る探索をする（KOGUMA.Mk3.1 で足した。
+ * モード0 No.11 で、最短走行でゴールに着いたあと。KOGUMA.MkIIl の Maze_Return_From_Goal）。
+ * type が未知壁探索（EXPLORE_UNKNOWN_WALLS・_KNOWN）なら、まず最短経路の上の見ていない壁を見に行ってから帰る。
+ * suction で吸引するかを選ぶ。終わり方と結果は explore_run() と同じ（スタートの区画のまん中で止まり、迷路を保存する） */
+explore_result_t explore_return_from(explore_type_t type, bool suction, int x, int y, direction_t dir, int goal_x,
+                                     int goal_y, int goal_width, int goal_height)
+{
+  explore_result_t result;
+
+  run_search_set_suction(suction);
+  if (suction) {
+    suction_ramp_up();
+    ui_wait_ms(SUCTION_SETTLE_MS);
+  }
+  s_use_known = false;
+  if (type == EXPLORE_UNKNOWN_WALLS_KNOWN) {
+    s_use_known = true;
+    type = EXPLORE_UNKNOWN_WALLS;
+  }
+  maze_map_clear_recent_cells();  /* この走行で記録した壁だけを、フェイルセーフのときに戻すようにする */
+
+  /* 今いる区画のまん中で、止まったまま制御を始める（このあとの動きは、まん中からの発進になる） */
+  run_search_start_at_center();
+  s_x = x;
+  s_y = y;
+  s_dir = dir;
+  s_stopped = true;
+  if (failsafe_is_stopped()) {
+    return finish_early(EXPLORE_RESULT_FAILSAFE);
+  }
+
+  /* 未知壁探索：止まっているので、すぐに計算して見に行く */
+  if (type == EXPLORE_UNKNOWN_WALLS) {
+    result = scan_unknown_walls(goal_x, goal_y, goal_width, goal_height);
+    if (result != EXPLORE_RESULT_DONE) {
+      return finish_early(result);
+    }
+  }
+
+  /* 帰り：スタートまで戻って止まる */
   search_set_target(0, 0, 1, 1);
   result = run_to_target();
   if (result != EXPLORE_RESULT_DONE) {

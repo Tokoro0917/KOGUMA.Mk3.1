@@ -4,7 +4,8 @@
  *
  * ■ もとにしたもの
  * ToraNeko.Mk3 の App/sys/mode.c（ecd8e10）。KOGUMA.Mk3.1 で変えたところ：
- *   - 探索（モード0）は、KOGUMA.MkIIl のモード0 と同じ番号にした（No.1〜7。No.8〜12 は最短走行を続けて走るので、ステップ10）
+ *   - 探索（モード0）は、KOGUMA.MkIIl のモード0 と同じ番号にした（No.1〜11。No.8〜11 は探索のあとに続けて最短走行を走る。
+ *     No.12（既知区間を斜めで）はまだ）
  *   - 最短走行（モード1）は No.1〜9（No.4〜9 は KOGUMA.MkIIl のモード1 No.4〜9 と同じ値。config/run_params.h）
  *   - ターンの調整（モード3）は、組 2000 が No.1〜7、組 2400 が No.9〜15。斜めの直進のテスト（ToraNeko.Mk3 のモード3 No.8・9）は
  *     モード4 No.2・3 に移した
@@ -25,6 +26,8 @@
  * ■ 今あるモード（ほかのモードは、中身を作ったときにここに足す）
  *   モード0 No.1〜7  探索（No.1 往復、2 エセ全面探索、3 片道 は吸引なし 500mm/s。No.4 往復、5 エセ全面探索、
  *                    6 未知壁探索、7 未知壁探索＋既知区間加速 は吸引 1000mm/s。KOGUMA.MkIIl と同じ番号）
+ *   モード0 No.8〜11 探索のあとに続けて最短走行（No.8 は No.1、No.9 は No.4、No.10・11 は No.7 の探索のあと。
+ *                    最短走行はモード1 No.5 と同じ。No.11 は最短走行を 4 回、毎回ゴールから探索しながらスタートへ帰る）
  *   モード1 No.1〜9  最短走行（No.1 は小回りだけ、No.2〜9 は大回り・斜め。決定したときに道がなければ「できなかった」）
  *   モード2 No.1     スラローム 90°（吸引なしの探索の速さで左に曲がり、左の区画のまん中で止まる）
  *   モード2 No.2     U ターン（行き止まりで止まり、前壁合わせ、180°、戻って止まる）
@@ -56,6 +59,8 @@
 #include "sys/mode.h"
 
 #include "maze/maze_map.h"
+#include "config/run_params.h"
+#include "ctrl/run.h"
 #include "sys/adjust.h"
 #include "sys/edge_test.h"
 #include "sys/encoder_cal.h"
@@ -101,8 +106,8 @@ int mode_get_number(void)
 bool mode_has_action(int mode, int number)
 {
   if (mode == 0) {
-    if (number >= 1 && number <= 7) {
-      return true;  /* 探索（No.8〜12 は最短走行を作ってから） */
+    if (number >= 1 && number <= 11) {
+      return true;  /* 探索（No.8〜11 は探索のあとに続けて最短走行。No.12 はまだ） */
     }
     return false;
   }
@@ -213,9 +218,16 @@ static void select_mode(void)
  * モード0：探索
  * ------------------------------------------------------------------------- */
 
-/* No. から、探索の走り方を決める（KOGUMA.MkIIl のモード0 と同じ番号。MODES.md） */
+/* No. から、探索の走り方を決める（KOGUMA.MkIIl のモード0 と同じ番号。MODES.md）。
+ * No.8〜11 は、探索のあとに続けて最短走行を走る。そのときの探索は、No.8 が No.1、No.9 が No.4、No.10・11 が No.7 と同じ */
 static explore_type_t explore_type_of(int number)
 {
+  if (number == 8 || number == 9) {
+    return EXPLORE_ROUND_TRIP;
+  }
+  if (number == 10 || number == 11) {
+    return EXPLORE_UNKNOWN_WALLS_KNOWN;
+  }
   if (number == 2 || number == 5) {
     return EXPLORE_ALL_CELLS;  /* エセ全面探索 */
   }
@@ -231,30 +243,123 @@ static explore_type_t explore_type_of(int number)
   return EXPLORE_ROUND_TRIP;  /* No.1・4 往復 */
 }
 
-/* No. から、吸引探索かを決める（No.4〜7 は吸引探索、No.1〜3 はスラローム探索） */
+/* No. から、吸引探索かを決める（No.4〜7・9〜11 は吸引探索、No.1〜3・8 はスラローム探索） */
 static bool explore_uses_suction(int number)
 {
+  if (number == 8) {
+    return false;
+  }
   if (number >= 4) {
     return true;
   }
   return false;
 }
 
-/* 探索走行をする */
-static void run_explore(int number)
+/* 探索の結果が「最後まで走った」でないときの合図を出す（フェイルセーフなら、スイッチで解除するまで待つ） */
+static void signal_explore_trouble(explore_result_t result)
 {
-  explore_result_t result = explore_run(explore_type_of(number), explore_uses_suction(number), goal_get_x(), goal_get_y(),
-                                        GOAL_WIDTH, GOAL_HEIGHT);
-
-  if (result == EXPLORE_RESULT_DONE) {
-    ui_signal_ok();  /* 走り終わった（迷路の保存は explore_run() の中で済んでいる） */
-  } else if (result == EXPLORE_RESULT_FAILSAFE) {
+  if (result == EXPLORE_RESULT_FAILSAFE) {
     /* 8 個全部を点滅させて、スイッチが押されるまで待ち、フェイルセーフを解除する（「ロード中」は mode_run_once() が出す） */
     ui_wait_failsafe_reset();
     failsafe_clear();
   } else if (result == EXPLORE_RESULT_NO_ROUTE) {
     ui_signal_error();  /* 道がなくなった（行き・帰りのどちらか）か、動きすぎた。迷路は保存しない */
   }
+}
+
+/* フェイルセーフで止まっていたら、8 個全部を点滅させて、スイッチが押されるまで待ち、解除して true を返す */
+static bool reset_if_failsafe(void)
+{
+  if (!failsafe_is_stopped()) {
+    return false;
+  }
+  ui_wait_failsafe_reset();
+  failsafe_clear();
+  return true;
+}
+
+#define SHORTEST_WAIT_MS   2000  /* 探索・帰りが終わってから、最短走行を始めるまで待つ時間 [ms]（KOGUMA.MkIIl と同じ 2 秒） */
+#define SHORTEST_REPEAT_COUNT 4  /* No.11 で、最短走行を走る回数（KOGUMA.MkIIl の SEARCH_REPEAT_N） */
+
+/* スタートの区画のまん中で止まっているところから、反対（北）を向き、後ろの壁まで下がってから、最短走行をする（モード0 No.8〜11）。
+ * 探索でスタートに戻ると、来た向き（南）を向いて止まっているので、まず反対を向く。下がると、ふつうに置いたときと同じ位置
+ * （お尻を後ろの壁に付けたところ）になる（KOGUMA.MkIIl と同じ）。うまくゴールに着いたら true */
+static bool shortest_after_search(void)
+{
+  ui_wait_ms(SHORTEST_WAIT_MS);
+  run_search_turn_back_at_center(0.0f);
+  run_search_back_to_start_wall();
+  if (reset_if_failsafe()) {
+    return false;
+  }
+  shortest_result_t result = shortest_run(SHORTEST_AFTER_SEARCH_NUMBER, goal_get_x(), goal_get_y());
+  if (result == SHORTEST_RESULT_FAILSAFE) {
+    reset_if_failsafe();
+    return false;
+  }
+  if (result != SHORTEST_RESULT_DONE) {
+    ui_signal_error();  /* 道がない（探索のあとなので、ふつうは起きない） */
+    return false;
+  }
+  return true;
+}
+
+/* 最短走行でゴールに着いたところから、反対を向いて区画のまん中に戻り、探索（No.7 と同じ未知壁探索＋既知区間加速、吸引）を
+ * しながらスタートへ帰る（モード0 No.11。KOGUMA.MkIIl の Maze_Return_From_Goal）。スタートに着いたら true */
+static bool return_from_goal(void)
+{
+  ui_wait_ms(SHORTEST_WAIT_MS);
+  run_search_turn_back_at_center(shortest_get_end_overshoot_mm());
+  if (reset_if_failsafe()) {
+    return false;
+  }
+  direction_t dir = maze_turn_back(shortest_get_end_dir());  /* 反対を向いた */
+  explore_result_t result = explore_return_from(EXPLORE_UNKNOWN_WALLS_KNOWN, true, shortest_get_end_x(),
+                                                shortest_get_end_y(), dir, goal_get_x(), goal_get_y(), GOAL_WIDTH,
+                                                GOAL_HEIGHT);
+  if (result != EXPLORE_RESULT_DONE) {
+    signal_explore_trouble(result);
+    return false;
+  }
+  return true;
+}
+
+/* 探索走行をする。No.8〜11 は、探索のあとに続けて最短走行を走る（No.11 は 4 回。毎回ゴールから帰る） */
+static void run_explore(int number)
+{
+  explore_result_t result = explore_run(explore_type_of(number), explore_uses_suction(number), goal_get_x(), goal_get_y(),
+                                        GOAL_WIDTH, GOAL_HEIGHT);
+  if (result != EXPLORE_RESULT_DONE) {
+    signal_explore_trouble(result);
+    return;
+  }
+  if (number <= 7) {
+    ui_signal_ok();  /* 走り終わった（迷路の保存は explore_run() の中で済んでいる） */
+    return;
+  }
+
+  /* No.8〜11：続けて最短走行 */
+  int run_count = 1;
+  if (number == 11) {
+    run_count = SHORTEST_REPEAT_COUNT;
+  }
+  for (int i = 0; i < run_count; i++) {
+    if (i > 0 && !return_from_goal()) {
+      return;  /* 帰れなかった（合図は return_from_goal() の中で出した） */
+    }
+    if (!shortest_after_search()) {
+      return;  /* 最短走行がうまくいかなかった（合図は shortest_after_search() の中で出した） */
+    }
+  }
+  if (number == 11) {
+    /* 最後の最短走行のあとも、スタートへ帰る（自律賞は、最後にスタートへ戻るまでノータッチが条件。KOGUMA.MkIIl と同じ） */
+    if (!return_from_goal()) {
+      return;
+    }
+    ui_play_finish();  /* 全部走り終わった曲 */
+    return;
+  }
+  ui_signal_ok();  /* 最短走行でゴールに着いた。スタートへは手で戻す */
 }
 
 /* ---------------------------------------------------------------------------

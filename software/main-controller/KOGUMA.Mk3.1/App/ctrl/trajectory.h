@@ -3,7 +3,7 @@
  * 目標の速さ・角速度を作る（台形加減速）
  *
  * ■ もとにしたもの
- * ToraNeko.Mk3 の App/ctrl/trajectory.h（ecd8e10）。KOGUMA.Mk3.1 で変えたところ：なし。
+ * ToraNeko.Mk3 の App/ctrl/trajectory.h（ecd8e10）。KOGUMA.Mk3.1 で変えたところ：後ろへ下がる直進 trajectory_start_straight_back() を足した。
  */
 #ifndef CTRL_TRAJECTORY_H
 #define CTRL_TRAJECTORY_H
@@ -19,6 +19,7 @@ typedef enum {
 
 void trajectory_reset(void);
 void trajectory_start_straight(float distance_mm, float max_speed_mm_s, float end_speed_mm_s, float accel_mm_s2);
+void trajectory_start_straight_back(float distance_mm, float max_speed_mm_s, float accel_mm_s2);
 void trajectory_start_pivot(float angle_deg, float max_omega_deg_s, float alpha_deg_s2);
 void trajectory_start_slalom(float angle_deg, float speed_mm_s, float max_omega_deg_s, float alpha_deg_s2);
 void trajectory_update(void);
