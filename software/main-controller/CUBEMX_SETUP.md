@@ -1,23 +1,41 @@
 # CubeMX の設定（ステップ0）
 
-KOGUMA.MkIIl の `.ioc`（STM32CubeIDE 用）をもとに、CMake で生成する `KOGUMA.Mk3.1` のプロジェクトを作る手順と、変える設定です。
-**CubeMX は Claude の環境では動かせないので、この作業は作者にお願いします。** 生成して push してもらえれば、そのあとのビルド・`App/` の追加は Claude がやります。
+`KOGUMA.Mk3.1` の CubeMX（CMake）プロジェクトの設定値です。
 
-設定の考え方は ToraNeko.Mk3 の `software/main-controller/CUBEMX_SETUP.md` と同じです。機体（ピン・クロック）は KOGUMA.MkIIl のまま変えず、ToraNeko.Mk3 で決めた作り（制御周期 2kHz を TIM11 で、µs のタイマー、壁センサの連鎖、ログの DMA 送信）に要るものを足します（制御周期を ToraNeko に合わせるのは 2026-11-08 に決定）。
+**2026-11-08 に、CubeMX を使わずに Claude が作った**（作者の提案「以前のプロジェクトをコピーして、変更箇所を変更すればいい」）。作り方は下の「0. どう作ったか」。
+このファイルの 2〜3 の表が、`KOGUMA.Mk3.1.ioc` と `Core/` に入っている設定。あとで CubeMX で開いて確かめるとき（下の 1）や、設定を変えるときに見る。
+
+設定の考え方は ToraNeko.Mk3 の `software/main-controller/CUBEMX_SETUP.md` と同じです。機体（ピン・クロック）は KOGUMA.MkIIl のまま変えず、ToraNeko.Mk3 で決めた作り（制御周期 2kHz を TIM11 で、µs のタイマー、壁センサの連鎖、ログの DMA 送信）に要るものを足しました（制御周期を ToraNeko に合わせるのは 2026-11-08 に決定）。
 ピンは [PIN_REQUIREMENTS.md](PIN_REQUIREMENTS.md)。
 
-## 0. 用意するもの
+## 0. どう作ったか
 
-- STM32CubeMX（6.x。ToraNeko.Mk3 で使っているもの）
-- このリポジトリを手元に clone して、ブランチ `claude/clever-ride-k9xfb3` を checkout しておく（`software/reference/koguma-mkiil/KOGUMA.MkIIl.ioc` が入っている）
+| ファイル | どこから持ってきたか | 直したところ |
+|---|---|---|
+| `KOGUMA.Mk3.1.ioc` | KOGUMA.MkIIl の `KOGUMA.MkIIl.ioc` | 下の 2・3 の表のとおり（Toolchain を CMake、ラベル、PB3、TIM5・TIM8・TIM11 を足し TIM6 を外す、ADC・SPI・USART2・DMA・NVIC）。書き方は ToraNeko.Mk3 の `.ioc` の同じ項目にそろえた |
+| `Drivers/` | KOGUMA.MkIIl の `Drivers/`（STM32Cube FW_F4 V1.28.2。F446 のヘッダ `stm32f446xx.h` が入っている） | なし |
+| `startup_stm32f446xx.s` | KOGUMA.MkIIl の `Core/Startup/startup_stm32f446retx.s`（中身は ST の `startup_stm32f446xx.s` と同じ） | 名前だけ |
+| `STM32F446xx_FLASH.ld` | ToraNeko.Mk3 の `STM32F411xx_FLASH.ld`（F411 と F446RE は Flash 512KB・RAM 128KB で同じ） | 先頭のコメント |
+| `CMakeLists.txt`、`CMakePresets.json`、`cmake/` | ToraNeko.Mk3 | プロジェクト名、`STM32F446xx`、起動ファイルとリンカスクリプトの名前、`App/` のファイル |
+| `Core/` | ToraNeko.Mk3 の `Core/`（CubeMX が CMake 用に生成したもの）をひな形にした | ピンと周辺機能を KOGUMA.MkIIl の生成コードに合わせ、下の 2・3 の表の設定にした（`main.h`、`gpio.c`、`tim.c`、`adc.c`、`dma.c`、`spi.c`、`usart.c`、`stm32f4xx_it.c`、`main.c` のクロックの設定） |
 
-## 1. 元の .ioc を開いて、別の名前で保存する
+`cmake --preset Debug && cmake --build --preset Debug` が警告なしで通ることを確かめた（2026-11-08。Flash 約 40KB、RAM 約 3KB）。CI でも同じビルドをする。
 
-1. `software/main-controller/KOGUMA.Mk3.1/` のフォルダは、もうある（中に、先に作った `App/`（迷路の処理など）が入っている。CubeMX は `App/` を消さない）
-2. `software/reference/koguma-mkiil/KOGUMA.MkIIl.ioc` を `software/main-controller/KOGUMA.Mk3.1/` にコピーし、名前を `KOGUMA.Mk3.1.ioc` に変える（`software/reference/` の中のものは編集しないので、必ずコピーしてから開く）
-3. CubeMX で **File → Load Project** を押し、コピーした `KOGUMA.Mk3.1.ioc` を開く
-4. 「Migrate」かどうか聞かれたら **Migrate** を押す（FW パッケージを新しいものにする。ToraNeko.Mk3 は STM32Cube FW_F4 V1.28.3）
-5. **Project Manager** タブの **Project** で、Project Name が `KOGUMA.Mk3.1`、Project Location が `software/main-controller` になっていることを確かめる（違ったら直す）
+## 1. 作者にお願いすること（実機で確かめる）
+
+### 1-1. 書き込んで、動くか見る（ステップ1 ができてから）
+
+今の `App/app.c` は何もしないので、書き込んでも何も起きない。ステップ1（LED とシリアル出力）を入れたら、ToraNeko.Mk3 と同じ手順で書き込んで、LED が順に点くこと、シリアルに文字が出ること（921600bps）を見てもらう。
+
+### 1-2. CubeMX で開いて確かめる（急がない。CubeMX を使える日に）
+
+`.ioc` は手で書き換えたので、CubeMX で開けるかと、生成したコードが今の `Core/` と同じになるかを、一度確かめておきたい。
+
+1. CubeMX で **File → Load Project** を押し、`software/main-controller/KOGUMA.Mk3.1/KOGUMA.Mk3.1.ioc` を開く
+2. エラーが出ずに開ければ成功。「Migrate」かどうか聞かれたら **Migrate** を押してよい
+3. **Pinout & Configuration** で、下の 3 の表と同じになっているかを見る（とくにタイマー TIM5・TIM8・TIM11、ADC の Trigger、USART2 の DMA）
+4. 右上の **GENERATE CODE** を押す
+5. GitHub Desktop などで、変わったファイルを見る。`Core/` のコメントや並び順が少し変わるのは問題ない。設定の値が変わっていたら、そのまま push して Claude に伝える（`App/` は CubeMX が触らないので、消えない）
 
 ## 2. Project Manager
 
@@ -133,18 +151,7 @@ System Core → NVIC で、次のように設定します（数字が小さい�
 - クロック（HSE 10MHz → 180MHz）、PA10〜PA12（GPIO 出力、用途は回路図で確認）、SWD（PA13・PA14）
 - TIM6 の割り込み（KOGUMA.MkIIl では有効）は、TIM6 を Disable にすると一緒になくなる。NVIC の一覧に残っていたら ✓ を外す
 
-## 4. 生成して push する
+## 4. 生成したあとに直したところ（USER CODE 欄）
 
-1. 右上の **GENERATE CODE** を押す
-2. `software/main-controller/KOGUMA.Mk3.1/` に `CMakeLists.txt`、`CMakePresets.json`、`Core/`、`Drivers/`、`cmake/`、`startup_stm32f446xx.s`、リンカスクリプト（`STM32F446xx_FLASH.ld` のような名前）ができていれば成功
-3. （できれば）VS Code で `KOGUMA.Mk3.1` フォルダを開き、STM32Cube 拡張でビルドが通るか見る。通らなくても、そのまま push してよい（Claude が直す）
-4. `software/main-controller/KOGUMA.Mk3.1/` を、`Drivers/` も含めて全部コミットし、ブランチ `claude/clever-ride-k9xfb3` に push する（`build/` は `.gitignore` で除外される）
-5. Claude に「CubeMX のプロジェクトを push した」と伝える
-
-## 5. 生成したあと Claude がやること
-
-1. `Core/Src/main.c` の USER CODE 欄に `app_init();` と `app_loop();` の呼び出しを書く
-2. `CMakeLists.txt` に `App/` のソースとインクルードパス、`-Wall -Wextra` を足す（書き方は ToraNeko.Mk3 の CUBEMX_SETUP.md の 10 と同じ）
-3. `cmake --preset Debug && cmake --build --preset Debug` が警告なしで通ることを確かめる
-4. CI（`.github/workflows/firmware-build.yml`）を ToraNeko.Mk3 から持ってきて、KOGUMA.Mk3.1 の名前に直す
-5. ステップ1（LED・シリアル出力）に進む
+- `Core/Src/main.c`：USER CODE 欄で `app_init()` と `app_loop()` を呼ぶ（ToraNeko.Mk3 と同じ）
+- `Core/Src/usart.c`：USER CODE 欄で PA2 をプッシュプルにし直す（Single Wire だとオープンドレインで生成されるため。ToraNeko.Mk3 の 7 と同じ）

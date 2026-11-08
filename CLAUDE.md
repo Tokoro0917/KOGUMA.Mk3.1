@@ -37,7 +37,7 @@
 - 返答・ドキュメント・コメントは日本語
 - 作者に作業をお願いするときは、上から順にやればよい手順（どの画面で何を押すか、何が表示されれば成功か）を示す
 - 回路図・CAD データは、要るときに作者に頼む（作者が用意してくれる）。推測で決めたピンや値には「回路図で確認」と書いておく
-- ファームウェアのビルドは `software/main-controller/KOGUMA.Mk3.1/` で `cmake --preset Debug && cmake --build --preset Debug`（CubeMX のプロジェクトができてから）。push 前に必ずビルドを通す（`App/` は `-Wall -Wextra` で警告なし）
+- ファームウェアのビルドは `software/main-controller/KOGUMA.Mk3.1/` で `cmake --preset Debug && cmake --build --preset Debug`。push 前に必ずビルドを通す（`App/` は `-Wall -Wextra` で警告なし）
 - PC のテストは `software/main-controller/test/` で `make`（`App/maze/` などを変えたら、push 前に必ず通す。CI でも実行する）
 - 実機の出力は `software/main-controller/logs/` に残す。値を決めるときは、まずここと KOGUMA.MkIIl の `logs/` のデータを見る
 - モードを足したり、中身・番号を変えたりしたら、`software/main-controller/README.md` の「モード一覧」と `MODES.md` を同じコミットで直す

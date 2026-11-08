@@ -6,7 +6,7 @@ ToraNeko.Mk3 のファームウェア（`software/main-controller/TORANEKO.Mk3/A
 ToraNeko.Mk3 が KOGUMA のコードを作り直したときと同じように、機能ごとに 1 つずつ作り、実機で確かめたものだけを置きます。
 
 - [PIN_REQUIREMENTS.md](PIN_REQUIREMENTS.md): ピン割り当て（KOGUMA.MkIIl の `.ioc` から読んだもの。回路図で確かめる）と、ToraNeko.Mk3 との違い
-- [CUBEMX_SETUP.md](CUBEMX_SETUP.md): CubeMX（`.ioc`）で CMake のプロジェクトを作る手順と設定値（ステップ0。作者にやってもらう）
+- [CUBEMX_SETUP.md](CUBEMX_SETUP.md): CubeMX（`.ioc`）の設定値と、プロジェクトをどう作ったか（ステップ0。CubeMX を使わず、KOGUMA.MkIIl と ToraNeko.Mk3 のプロジェクトを写して作った）
 - [KOGUMA_PORTING.md](KOGUMA_PORTING.md): ToraNeko.Mk3 の `App/` のどれをそのまま持ってくるか、KOGUMA の機体に合わせて何を変えるか、KOGUMA にしかない機能をどうするか
 - MODES.md（まだない）：機体の操作とモードの割り当て。ステップ9で、KOGUMA.MkIIl と ToraNeko.Mk3 の MODES.md を見ながら決める
 
@@ -67,14 +67,14 @@ software/main-controller/
 │   ├── Makefile
 │   └── mazes/                    テスト用の 16×16 の迷路と、作る道具（gen_maze.py、KOGUMA の迷路の出力を直す from_koguma_dump.py）
 │
-└── KOGUMA.Mk3.1/                 CubeMX（CMake）プロジェクト（作者に CubeMX で作ってもらう）
-    ├── KOGUMA.Mk3.1.ioc          CubeMX 設定（KOGUMA.MkIIl.ioc をもとにする）
+└── KOGUMA.Mk3.1/                 CubeMX（CMake）プロジェクト（作った。KOGUMA.MkIIl と ToraNeko.Mk3 のプロジェクトを写して直した。CUBEMX_SETUP.md の 0）
+    ├── KOGUMA.Mk3.1.ioc          CubeMX 設定（KOGUMA.MkIIl.ioc をもとに直した）
     ├── CMakeLists.txt            ビルド設定（初回だけ生成。App/ の追加はここに書く）
     ├── CMakePresets.json         Debug / Release のプリセット（生成）
     ├── cmake/                    ツールチェーン設定（生成）
     ├── startup_stm32f446xx.s     スタートアップ（生成）
-    ├── STM32F446xx_FLASH.ld      リンカスクリプト（生成。名前は CubeMX が決める）
-    ├── Core/                     CubeMX が生成。USER CODE 欄以外は編集しない
+    ├── STM32F446xx_FLASH.ld      リンカスクリプト（ToraNeko の F411 用を写した。メモリの大きさは同じ）
+    ├── Core/                     生成コード（CubeMX で生成し直してもよい）。USER CODE 欄以外は編集しない
     ├── Drivers/                  HAL / CMSIS（生成。コミットする）
     │
     └── App/                      自作コードはすべてここ
@@ -168,7 +168,7 @@ ToraNeko.Mk3 では作り方を考えながら進めたが、KOGUMA.Mk3.1 では
 
 | # | 内容 | 持ってくる ToraNeko.Mk3 のファイル | KOGUMA で変えるところ | KOGUMA.MkIIl の対応ファイル | 状態 |
 |---|---|---|---|---|---|
-| 0 | F446 用の CMake プロジェクト作成 | `CMakeLists.txt` の App/ の足し方、`App/app.c` | `.ioc` は KOGUMA.MkIIl.ioc から作る（[CUBEMX_SETUP.md](CUBEMX_SETUP.md)） | `KOGUMA.MkIIl.ioc` | **作者の作業待ち**（CubeMX で生成） |
+| 0 | F446 用の CMake プロジェクト作成 | `CMakeLists.txt`、`cmake/`、`Core/`（ひな形）、`App/app.c` | `.ioc` と `Core/` を、KOGUMA.MkIIl の設定と決めた設定（2kHz・TIM11 など）に合わせる | `KOGUMA.MkIIl.ioc`、`Core/`、`Drivers/` | **完了**（2026-11-08。CubeMX を使わずに作った。[CUBEMX_SETUP.md](CUBEMX_SETUP.md) の 0。ビルドは警告なし、CI でも確かめる。実機と、CubeMX で開けるかはまだ） |
 | 1 | LED・シリアル出力（printf）・ブザー | `drv/led.c`, `drv/uart.c`, `drv/timebase.c` | LED 8 個＋壁の表示 4 個、USART2、ブザー（新） | `UI.c`, `syscalls.c` | |
 | 2 | 制御周期の割り込み | `sys/scheduler.c` | TIM11、2kHz（ToraNeko と同じ。タイマーのクロックが 180MHz なので PSC だけ違う） | `PL_timer.c` | |
 | 3 | エンコーダ | `drv/encoder.c` | SPI3、CS 2 本。磁石がモーターの軸ならギア比を掛ける。角度の歪みの補正（ToraNeko のモード6 No.6）を持ち込むか | `PL_encoder.c` | |

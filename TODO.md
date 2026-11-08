@@ -6,14 +6,15 @@ KOGUMA.MkIIl の学生大会（2026-11-21〜22）までは、作者の実機の�
 
 ## 作者にお願いすること
 
-- [ ] **CubeMX で `KOGUMA.Mk3.1` のプロジェクトを作って push する**（ステップ0。手順は [software/main-controller/CUBEMX_SETUP.md](software/main-controller/CUBEMX_SETUP.md)。フォルダ `software/main-controller/KOGUMA.Mk3.1/` はもうあり、中に `App/` が入っている）
+- [x] ~~CubeMX でプロジェクトを作る~~ → 2026-11-08 に Claude が KOGUMA.MkIIl と ToraNeko.Mk3 のプロジェクトを写して作った（作者の提案）
+- [ ] （急がない）CubeMX で `KOGUMA.Mk3.1.ioc` を開いて、エラーなく開けるか・生成したコードが変わらないかを確かめる（手順は [software/main-controller/CUBEMX_SETUP.md](software/main-controller/CUBEMX_SETUP.md) の 1-2）
 - [ ] **メイン基板の回路図**（PDF でよい）を `hardware/` に置く。とくに知りたいこと：PA10〜PA12 の用途、モータードライバの型番と TIM3 CH1〜4 のつながり、壁センサの受光と ADC チャンネル・発光の組の対応、電池の分圧の抵抗（[hardware/README.md](hardware/README.md)）
 - [x] PC とのシリアルに何を使っているか → STLINK-V3 の仮想 COM ポート。921600bps にする（2026-11-08）
 - [x] 決定事項の案と KOGUMA_PORTING.md の B の案を決める → 2026-11-08 のアンケートで決まった（下の「記録」）
 
 ## 移植（software/main-controller/README.md の「実装の進め方」）
 
-- [ ] ステップ0：CubeMX のプロジェクト（作者）→ `App/app.c`、`CMakeLists.txt`、CI（Claude）
+- [x] ステップ0：CMake のプロジェクト（2026-11-08。KOGUMA.MkIIl と ToraNeko.Mk3 から作った。ビルドは警告なし。CI でビルドする）
 - [ ] ステップ1：LED・シリアル出力（921600bps）・ブザー
 - [ ] ステップ2：制御周期の割り込み（TIM11、2kHz。ToraNeko と同じ）と処理時間の計測（TIM5）
 - [ ] ステップ3：エンコーダ（SPI3）
@@ -39,6 +40,10 @@ KOGUMA.MkIIl の学生大会（2026-11-21〜22）までは、作者の実機の�
 - [ ] KOGUMA.MkIIl の学生大会に向けた変更（電池を替えたあとのターンの合わせ直し、直線の加速の限界の測定、2400 を使うか）。結果が出たら、ステップ7・10 の値に使う（KOGUMA.MkIIl `TODO.md`）
 
 ## 記録
+
+### 2026-11-08（ステップ0）
+
+- CubeMX を使わずに、CMake のプロジェクトを作った（作者の提案）。`.ioc`・`Drivers/`・起動ファイルは KOGUMA.MkIIl、CMake の一式と `Core/` のひな形は ToraNeko.Mk3 から。ピンと周辺機能は、決めた設定（制御周期 2kHz・TIM11、µs の TIM5、壁センサの TIM8、ADC をタイマーで起動、SPI を 10MHz 以下に、USART2 を 921600bps・DMA 送信）にした。ビルドは警告なし（Flash 約 40KB、RAM 約 3KB）
 
 ### 2026-11-08（アンケートで決めたこと）
 
