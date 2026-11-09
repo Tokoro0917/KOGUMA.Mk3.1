@@ -13,6 +13,8 @@
  *   EXPLORE_UNKNOWN_WALLS 未知壁探索：スタート → ゴール → 最短経路の上の見ていない壁を見に行く → スタート（No.6）
  *   EXPLORE_UNKNOWN_WALLS_KNOWN 未知壁探索＋既知区間加速：No.6 と同じ道を通り、行きと帰りで、見たことのある区画が
  *                                 まっすぐ 2 区画以上続くところは、まとめて速く走る（No.7）
+ *   EXPLORE_UNKNOWN_WALLS_KNOWN_DIAG    No.7 と同じだが、見たことのある区画の経路にジグザグがあれば、
+ *                                 斜めで走る（KOGUMA.MkIIl のモード0 No.12。吸引探索で使う）
  *   suction が true なら吸引探索（1000mm/s、吸引 5.5V）、false ならスラローム探索（500mm/s、吸引なし）
  *
  * ■ 使い方
@@ -34,6 +36,7 @@ typedef enum {
   EXPLORE_ONE_WAY,        /* 片道 */
   EXPLORE_UNKNOWN_WALLS,  /* 未知壁探索 */
   EXPLORE_UNKNOWN_WALLS_KNOWN,  /* 未知壁探索＋既知区間加速 */
+  EXPLORE_UNKNOWN_WALLS_KNOWN_DIAG,  /* 未知壁探索＋既知区間加速、既知区間を斜めで（KOGUMA.Mk3.1 で足した。モード0 No.12） */
 } explore_type_t;
 
 /* 探索の結果 */

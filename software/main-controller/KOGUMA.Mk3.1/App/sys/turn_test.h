@@ -11,5 +11,6 @@
 
 void turn_test_run(int number);
 void turn_test_run_diag(bool use_correction);
+void turn_test_run_1000(int number);
 
 #endif /* SYS_TURN_TEST_H */

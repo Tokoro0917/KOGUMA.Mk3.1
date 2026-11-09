@@ -13,10 +13,11 @@
  * なるように計算した。KOGUMA.MkIIl の前距離・後距離（st・end。実機で合わせた値）とは違う。
  * 実機で走らせて、ずれる分を下の「実機で足す前距離・後距離」に入れる（モード3 のターンの調整で）。
  *
- * ■ ターンの組は 2 つ（KOGUMA.Mk3.1 で足した。ToraNeko.Mk3 は 1 つ）
- * KOGUMA.MkIIl は、2000mm/s で曲がるターン（G_Turn2000）と、2400mm/s で曲がるターン（G_Turn2400）の 2 組を持っていた。
+ * ■ ターンの組は 3 つ（KOGUMA.Mk3.1 で足した。ToraNeko.Mk3 は 1 つ）
+ * KOGUMA.MkIIl は、2000mm/s で曲がるターン（G_Turn2000）、2400mm/s で曲がるターン（G_Turn2400）、1000mm/s で曲がるターン（G_Turn1000）を持っていた。
  *   組 2000：下の BIG90_* など（ToraNeko.Mk3 と同じ名前）
  *   組 2400：下の BIG90_2400_* など（名前の頭の後ろに _2400 を付けた）
+ *   組 1000：下の BIG90_1000_* など（KOGUMA.MkIIl の G_Turn1000。探索の既知区間を斜めで走るとき。モード0 No.12）
  * どちらの組で曲がるかは、最短走行の No. で決まる（ctrl/run.c の run_fast_set_turn_set()、sys/shortest.c）。
  * 走る時間の見積もり（maze/dijkstra.c）は、どちらの組でも組 2000 の形を、ターンの速さに合わせて縮めて数える
  * （組ごとの形の違いは、道の選び方にはあまり効かないため）。
@@ -132,6 +133,53 @@
 #define V90_2400_PRE_MM 40.2f
 #define V90_2400_POST_MM 40.8f
 
+/* ---- 組 1000（KOGUMA の Move.c の G_Turn1000。最高角速度は w、角加速度は w_ac × 2/π） ----
+ * 探索の既知区間を斜めで走るとき（モード0 No.12）に、斜め入り・斜め出・V90 で使う（吸引探索の速さ 1000mm/s で曲がる）。
+ * 大回り 90°・180° は、既知区間では使わない（既知区間は小回りで走る。maze/path.c の convert_known_to_diagonal()）が、
+ * 組 2000・組 2400 と同じ形にするために置いてある */
+#define BIG90_1000_SPEED_MM_S     1000.0f
+#define BIG90_1000_ALPHA_DEG_S2   12732.0f
+#define BIG180_1000_SPEED_MM_S    1000.0f
+#define BIG180_1000_ALPHA_DEG_S2  8276.0f
+#define IN45_1000_SPEED_MM_S      1000.0f
+#define IN45_1000_ALPHA_DEG_S2    12732.0f
+#define IN135_1000_SPEED_MM_S     1000.0f
+#define IN135_1000_ALPHA_DEG_S2   12732.0f
+#define OUT45_1000_SPEED_MM_S     1000.0f
+#define OUT45_1000_ALPHA_DEG_S2   12732.0f
+#define OUT135_1000_SPEED_MM_S    1000.0f
+#define OUT135_1000_ALPHA_DEG_S2  12732.0f
+#define V90_1000_SPEED_MM_S       1000.0f
+#define V90_1000_ALPHA_DEG_S2     15915.0f
+
+#define BIG90_1000_OMEGA_DEG_S 750.0f
+#define BIG90_1000_PRE_MM 73.0f
+#define BIG90_1000_POST_MM 73.3f
+
+#define BIG180_1000_OMEGA_DEG_S 658.4f  /* 横がちょうど 180mm になる値（--calc。KOGUMA は 680） */
+#define BIG180_1000_PRE_MM 3.0f
+#define BIG180_1000_POST_MM 3.4f
+
+#define IN45_1000_OMEGA_DEG_S 800.0f
+#define IN45_1000_PRE_MM 28.8f
+#define IN45_1000_POST_MM 66.4f
+
+#define IN135_1000_OMEGA_DEG_S 800.0f
+#define IN135_1000_PRE_MM 60.9f
+#define IN135_1000_POST_MM 46.1f
+
+#define OUT45_1000_OMEGA_DEG_S 700.0f
+#define OUT45_1000_PRE_MM 65.9f
+#define OUT45_1000_POST_MM 28.8f
+
+#define OUT135_1000_OMEGA_DEG_S 800.0f
+#define OUT135_1000_PRE_MM 45.5f
+#define OUT135_1000_POST_MM 61.5f
+
+#define V90_1000_OMEGA_DEG_S 1000.0f
+#define V90_1000_PRE_MM 36.6f
+#define V90_1000_POST_MM 36.9f
+
 /* 実機で足す前距離・後距離 [mm]（ToraNeko.Mk3 と同じ考え方。モード3 で実機で合わせる。今は 0）。組 2000 */
 #define BIG90_PRE_ADJUST_MM   0.0f
 #define BIG90_POST_ADJUST_MM  0.0f
@@ -163,5 +211,21 @@
 #define OUT135_2400_POST_ADJUST_MM  0.0f
 #define V90_2400_PRE_ADJUST_MM      0.0f
 #define V90_2400_POST_ADJUST_MM     0.0f
+
+/* 同じく、組 1000 */
+#define BIG90_1000_PRE_ADJUST_MM    0.0f
+#define BIG90_1000_POST_ADJUST_MM   0.0f
+#define BIG180_1000_PRE_ADJUST_MM   0.0f
+#define BIG180_1000_POST_ADJUST_MM  0.0f
+#define IN45_1000_PRE_ADJUST_MM     0.0f
+#define IN45_1000_POST_ADJUST_MM    0.0f
+#define IN135_1000_PRE_ADJUST_MM    0.0f
+#define IN135_1000_POST_ADJUST_MM   0.0f
+#define OUT45_1000_PRE_ADJUST_MM    0.0f
+#define OUT45_1000_POST_ADJUST_MM   0.0f
+#define OUT135_1000_PRE_ADJUST_MM   0.0f
+#define OUT135_1000_POST_ADJUST_MM  0.0f
+#define V90_1000_PRE_ADJUST_MM      0.0f
+#define V90_1000_POST_ADJUST_MM     0.0f
 
 #endif /* CONFIG_TURN_PARAMS_H */

@@ -661,6 +661,16 @@ void turn_test_run(int number)
   s_run_time_ms = s_now_ms;
 }
 
+static int s_turn_1000_count = 0;
+static int s_turn_1000_number = 0;
+
+void turn_test_run_1000(int number)
+{
+  s_turn_1000_count = s_turn_1000_count + 1;
+  s_turn_1000_number = number;
+  s_run_time_ms = s_now_ms;
+}
+
 void turn_test_run_diag(bool use_correction)
 {
   s_diag_test_count = s_diag_test_count + 1;
@@ -981,15 +991,16 @@ static void test_select_and_start(void)
 static void test_has_action(void)
 {
   printf("[5] 決定できる番号\n");
-  check(!mode_has_action(0, 0) && mode_has_action(0, 1) && mode_has_action(0, 11) && !mode_has_action(0, 12),
-        "モード0（探索）は No.1〜11 だけ決定できる（No.12 はまだ）");
+  check(!mode_has_action(0, 0) && mode_has_action(0, 1) && mode_has_action(0, 12) && !mode_has_action(0, 13),
+        "モード0（探索）は No.1〜12 だけ決定できる");
   check(!mode_has_action(1, 0) && mode_has_action(1, 1) && mode_has_action(1, 9) && !mode_has_action(1, 10),
         "モード1（最短走行）は No.1〜9 だけ決定できる");
   check(mode_has_action(3, 1) && mode_has_action(3, 7) && !mode_has_action(3, 8) && mode_has_action(3, 9) &&
             mode_has_action(3, 15) && !mode_has_action(3, 0),
         "モード3（ターンの調整）は No.1〜7（組 2000）と No.9〜15（組 2400）を決定できて、No.8 はできない");
-  check(!mode_has_action(2, 0) && mode_has_action(2, 1) && mode_has_action(2, 5) && !mode_has_action(2, 6),
-        "モード2 は No.1〜5 だけ決定できる");
+  check(!mode_has_action(2, 0) && mode_has_action(2, 1) && mode_has_action(2, 5) && !mode_has_action(2, 6) &&
+            !mode_has_action(2, 8) && mode_has_action(2, 9) && mode_has_action(2, 15),
+        "モード2 は No.1〜5 と No.9〜15（組 1000 のターン）を決定できる");
   check(mode_has_action(4, 1) && mode_has_action(4, 2) && mode_has_action(4, 3),
         "モード4 は No.1（吸引なしの加速度テスト）と No.2・3（斜めの直進のテスト）を決定できる");
   check(mode_has_action(4, 4) && mode_has_action(4, 11) && mode_has_action(4, 12) && !mode_has_action(4, 13),
@@ -1357,13 +1368,15 @@ static void test_step9_tools(void)
  * No.11 は最短走行を 4 回、2 回目からは毎回ゴールから帰ってから走り、最後にもう一度帰って、全部走り終わった曲を鳴らす */
 static void test_search_then_shortest(void)
 {
-  printf("[6] 探索のあとに続けて最短走行（モード0 No.8〜11）\n");
-  explore_type_t types[12] = {EXPLORE_ROUND_TRIP, EXPLORE_ROUND_TRIP, EXPLORE_ALL_CELLS, EXPLORE_ONE_WAY,
+  printf("[6] 探索のあとに続けて最短走行（モード0 No.8〜12）\n");
+  explore_type_t types[13] = {EXPLORE_ROUND_TRIP, EXPLORE_ROUND_TRIP, EXPLORE_ALL_CELLS, EXPLORE_ONE_WAY,
                               EXPLORE_ROUND_TRIP, EXPLORE_ALL_CELLS, EXPLORE_UNKNOWN_WALLS, EXPLORE_UNKNOWN_WALLS_KNOWN,
                               EXPLORE_ROUND_TRIP, EXPLORE_ROUND_TRIP, EXPLORE_UNKNOWN_WALLS_KNOWN,
-                              EXPLORE_UNKNOWN_WALLS_KNOWN};
+                              EXPLORE_UNKNOWN_WALLS_KNOWN, EXPLORE_UNKNOWN_WALLS_KNOWN_DIAG};
   bool ok = true;
-  for (int number = 8; number <= 10; number++) {
+  int numbers[4] = {8, 9, 10, 12};
+  for (int k = 0; k < 4; k++) {
+    int number = numbers[k];
     reset_world();
     reset_explore();
     reset_step9_tests();
@@ -1388,7 +1401,7 @@ static void test_search_then_shortest(void)
       ok = false;
     }
   }
-  check(ok, "No.8〜10：決めた探索を 1 回、そのあと反対を向いて後ろの壁まで下がり、最短走行（No.5）を 1 回");
+  check(ok, "No.8〜10・12：決めた探索を 1 回（No.12 は既知区間を斜めで）、そのあと反対を向いて後ろの壁まで下がり、最短走行（No.5）を 1 回");
 
   reset_world();
   reset_explore();
@@ -1450,6 +1463,15 @@ static void test_step10_modes(void)
     }
   }
   check(turn_ok, "モード3 No.1・7・15 で、ターンの調整が選んだ No. で呼ばれる");
+
+  reset_world();
+  reset_step9_tests();
+  s_turn_1000_count = 0;
+  mode_init();
+  select_and_start(2, 12);
+  mode_run_once();
+  check(s_turn_1000_count == 1 && s_turn_1000_number == 12 && s_turn_test_count == 0,
+        "モード2 No.12 で、組 1000 のターンの調整が No.12 で呼ばれる");
 
   reset_world();
   reset_step9_tests();

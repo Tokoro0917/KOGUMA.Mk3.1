@@ -4,8 +4,7 @@
  *
  * ■ もとにしたもの
  * ToraNeko.Mk3 の App/sys/mode.c（ecd8e10）。KOGUMA.Mk3.1 で変えたところ：
- *   - 探索（モード0）は、KOGUMA.MkIIl のモード0 と同じ番号にした（No.1〜11。No.8〜11 は探索のあとに続けて最短走行を走る。
- *     No.12（既知区間を斜めで）はまだ）
+ *   - 探索（モード0）は、KOGUMA.MkIIl のモード0 と同じ番号にした（No.1〜12。No.8〜12 は探索のあとに続けて最短走行を走る）
  *   - 最短走行（モード1）は No.1〜9（No.4〜9 は KOGUMA.MkIIl のモード1 No.4〜9 と同じ値。config/run_params.h）
  *   - ターンの調整（モード3）は、組 2000 が No.1〜7、組 2400 が No.9〜15。斜めの直進のテスト（ToraNeko.Mk3 のモード3 No.8・9）は
  *     モード4 No.2・3 に移した
@@ -28,12 +27,14 @@
  *                    6 未知壁探索、7 未知壁探索＋既知区間加速 は吸引 1000mm/s。KOGUMA.MkIIl と同じ番号）
  *   モード0 No.8〜11 探索のあとに続けて最短走行（No.8 は No.1、No.9 は No.4、No.10・11 は No.7 の探索のあと。
  *                    最短走行はモード1 No.5 と同じ。No.11 は最短走行を 4 回、毎回ゴールから探索しながらスタートへ帰る）
+ *   モード0 No.12    No.10 と同じだが、探索の既知区間を斜めで走る（KOGUMA.MkIIl の「お遊び」）
  *   モード1 No.1〜9  最短走行（No.1 は小回りだけ、No.2〜9 は大回り・斜め。決定したときに道がなければ「できなかった」）
  *   モード2 No.1     スラローム 90°（吸引なしの探索の速さで左に曲がり、左の区画のまん中で止まる）
  *   モード2 No.2     U ターン（行き止まりで止まり、前壁合わせ、180°、戻って止まる）
  *   モード2 No.3     吸引探索のスラローム 90°（吸引して、吸引探索の速さで。No.1 と同じ動き）
  *   モード2 No.4     その場 180° 旋回（左に回って止まる。旋回の制御の係数を合わせる）
  *   モード2 No.5     壁合わせだけ（前の壁で位置と向きを直す）
+ *   モード2 No.9〜15 組 1000 のターンを 1 つずつ（探索の既知区間を斜めで走るときのターン。並びはモード3 と同じ）
  *   モード3 No.1〜7  最短走行のターンを 1 つずつ（組 2000。大回り 90°・180°、斜め入り 45°・135°、斜め出 45°・135°、V90°。左だけ）
  *   モード3 No.9〜15 同じく、組 2400
  *   モード4 No.1     吸引なしの加速度テスト
@@ -106,8 +107,8 @@ int mode_get_number(void)
 bool mode_has_action(int mode, int number)
 {
   if (mode == 0) {
-    if (number >= 1 && number <= 11) {
-      return true;  /* 探索（No.8〜11 は探索のあとに続けて最短走行。No.12 はまだ） */
+    if (number >= 1 && number <= 12) {
+      return true;  /* 探索（No.8〜12 は探索のあとに続けて最短走行） */
     }
     return false;
   }
@@ -127,6 +128,9 @@ bool mode_has_action(int mode, int number)
     return false;
   }
   if (mode == 2) {
+    if (number >= 9 && number <= 15) {
+      return true;  /* 組 1000 のターン（探索の既知区間を斜めで走るとき） */
+    }
     if (number >= 1 && number <= 5) {
       return true;  /* スラローム 90°、U ターン、吸引探索のスラローム 90°、その場 180° 旋回、壁合わせだけ */
     }
@@ -219,7 +223,8 @@ static void select_mode(void)
  * ------------------------------------------------------------------------- */
 
 /* No. から、探索の走り方を決める（KOGUMA.MkIIl のモード0 と同じ番号。MODES.md）。
- * No.8〜11 は、探索のあとに続けて最短走行を走る。そのときの探索は、No.8 が No.1、No.9 が No.4、No.10・11 が No.7 と同じ */
+ * No.8〜12 は、探索のあとに続けて最短走行を走る。そのときの探索は、No.8 が No.1、No.9 が No.4、No.10・11 が No.7 と同じ。
+ * No.12 は No.7 の探索の既知区間を斜めで走る */
 static explore_type_t explore_type_of(int number)
 {
   if (number == 8 || number == 9) {
@@ -227,6 +232,9 @@ static explore_type_t explore_type_of(int number)
   }
   if (number == 10 || number == 11) {
     return EXPLORE_UNKNOWN_WALLS_KNOWN;
+  }
+  if (number == 12) {
+    return EXPLORE_UNKNOWN_WALLS_KNOWN_DIAG;
   }
   if (number == 2 || number == 5) {
     return EXPLORE_ALL_CELLS;  /* エセ全面探索 */
@@ -243,7 +251,7 @@ static explore_type_t explore_type_of(int number)
   return EXPLORE_ROUND_TRIP;  /* No.1・4 往復 */
 }
 
-/* No. から、吸引探索かを決める（No.4〜7・9〜11 は吸引探索、No.1〜3・8 はスラローム探索） */
+/* No. から、吸引探索かを決める（No.4〜7・9〜12 は吸引探索、No.1〜3・8 はスラローム探索） */
 static bool explore_uses_suction(int number)
 {
   if (number == 8) {
@@ -324,7 +332,7 @@ static bool return_from_goal(void)
   return true;
 }
 
-/* 探索走行をする。No.8〜11 は、探索のあとに続けて最短走行を走る（No.11 は 4 回。毎回ゴールから帰る） */
+/* 探索走行をする。No.8〜12 は、探索のあとに続けて最短走行を走る（No.11 は 4 回。毎回ゴールから帰る） */
 static void run_explore(int number)
 {
   explore_result_t result = explore_run(explore_type_of(number), explore_uses_suction(number), goal_get_x(), goal_get_y(),
@@ -338,7 +346,7 @@ static void run_explore(int number)
     return;
   }
 
-  /* No.8〜11：続けて最短走行 */
+  /* No.8〜12：続けて最短走行 */
   int run_count = 1;
   if (number == 11) {
     run_count = SHORTEST_REPEAT_COUNT;
@@ -463,6 +471,8 @@ static void run_selected(void)
     turn_test_run_diag(false);
   } else if (s_mode == 4 && s_number == 3) {
     turn_test_run_diag(true);
+  } else if (s_mode == 2 && s_number >= 9) {
+    turn_test_run_1000(s_number);
   } else if (s_mode == 2 && s_number == 1) {
     adjust_slalom_90();
   } else if (s_mode == 2 && s_number == 2) {

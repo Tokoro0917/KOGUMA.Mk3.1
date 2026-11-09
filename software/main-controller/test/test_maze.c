@@ -2930,13 +2930,16 @@ static const char *explore_type_name(explore_type_t type)
   if (type == EXPLORE_UNKNOWN_WALLS_KNOWN) {
     return "未知壁探索＋既知区間加速";
   }
+  if (type == EXPLORE_UNKNOWN_WALLS_KNOWN_DIAG) {
+    return "未知壁探索＋既知区間を斜めで";
+  }
   return "往復";
 }
 
 /* 未知壁探索（既知区間加速ありも）か */
 static bool is_unknown_walls_type(explore_type_t type)
 {
-  if (type == EXPLORE_UNKNOWN_WALLS || type == EXPLORE_UNKNOWN_WALLS_KNOWN) {
+  if (type == EXPLORE_UNKNOWN_WALLS || type == EXPLORE_UNKNOWN_WALLS_KNOWN || type == EXPLORE_UNKNOWN_WALLS_KNOWN_DIAG) {
     return true;
   }
   return false;
@@ -3302,6 +3305,8 @@ static int s_fast_small_turn_count = 0; /* 小回りの回数（No.1） */
 static bool s_fast_stopped = false;    /* 最後に止まったか */
 static run_turn_set_t s_fast_turn_set = RUN_TURN_SET_2000;  /* 今のターンの組 */
 static float s_fast_suction_v = 0.0f;  /* 最後に上げた吸引の強さ [V] */
+static bool s_fast_in_known = false;   /* 探索の既知区間を斜めで走っているところか（run_search_known_path_begin〜end。No.12） */
+static int s_fast_known_path_count = 0;  /* 探索で、斜めの既知区間の経路を走った回数 */
 
 /* 仮の機体 その 2 の、おかしな頼まれ方を数える（最初の数回だけ表示する） */
 static void fast_error(const char *message)
@@ -3312,12 +3317,33 @@ static void fast_error(const char *message)
   s_fast_error_count = s_fast_error_count + 1;
 }
 
-/* 今の向きに distance_mm 進む */
+static void check_known_edge(void);
+
+/* 今の向きに distance_mm 進む。探索の既知区間を走っているときは、半区画（縦横）・斜め 1 つぶんごとに、
+ * 通る壁の辺に本当の壁がないかを調べる（check_known_edge()） */
 static void fast_move(float distance_mm)
 {
   float heading_rad = s_fast_heading_deg * 3.14159265f / 180.0f;
-  s_fast_x_mm = s_fast_x_mm + distance_mm * cosf(heading_rad);
-  s_fast_y_mm = s_fast_y_mm + distance_mm * sinf(heading_rad);
+  if (!s_fast_in_known) {
+    s_fast_x_mm = s_fast_x_mm + distance_mm * cosf(heading_rad);
+    s_fast_y_mm = s_fast_y_mm + distance_mm * sinf(heading_rad);
+    return;
+  }
+  float step_mm = HALF_CELL_MM;
+  float heading_deg = fmodf(s_fast_heading_deg + 3600.0f, 90.0f);
+  if (heading_deg > 1.0f && heading_deg < 89.0f) {
+    step_mm = DIAG_STEP_MM;  /* 斜め */
+  }
+  float moved_mm = 0.0f;
+  while (moved_mm + step_mm <= distance_mm + 0.5f) {
+    s_fast_x_mm = s_fast_x_mm + step_mm * cosf(heading_rad);
+    s_fast_y_mm = s_fast_y_mm + step_mm * sinf(heading_rad);
+    moved_mm = moved_mm + step_mm;
+    check_known_edge();
+  }
+  float rest_mm = distance_mm - moved_mm;
+  s_fast_x_mm = s_fast_x_mm + rest_mm * cosf(heading_rad);
+  s_fast_y_mm = s_fast_y_mm + rest_mm * sinf(heading_rad);
 }
 
 /* 直進の終わりの速さが、距離で上げられる速さ以下で、最高速以下か、始めの速さから遅くしきれるかを調べ、進む */
@@ -3407,6 +3433,9 @@ float run_fast_turn_speed_mm_s(run_fast_turn_t turn)
   if (s_fast_turn_set == RUN_TURN_SET_2400) {
     return BIG90_2400_SPEED_MM_S;
   }
+  if (s_fast_turn_set == RUN_TURN_SET_1000) {
+    return BIG90_1000_SPEED_MM_S;
+  }
   return BIG90_SPEED_MM_S;
 }
 
@@ -3446,6 +3475,136 @@ static void fast_turn_move(float forward_mm, float left_mm, float angle_deg)
   s_fast_x_mm = s_fast_x_mm + forward_mm * cosf(heading_rad) - left_mm * sinf(heading_rad);
   s_fast_y_mm = s_fast_y_mm + forward_mm * sinf(heading_rad) + left_mm * cosf(heading_rad);
   s_fast_heading_deg = s_fast_heading_deg + angle_deg;
+  if (s_fast_in_known) {
+    check_known_edge();  /* ターンが壁の辺の上で終わったら、その辺に本当の壁がないか */
+  }
+}
+
+/* 探索の既知区間を走っているとき：今の位置が壁の辺のまん中なら、その辺に本当の壁がないかを調べる */
+static void check_known_edge(void)
+{
+  int cell_x = (int)floorf(s_fast_x_mm / CELL_MM);
+  int cell_y = (int)floorf(s_fast_y_mm / CELL_MM);
+  if (on_grid(s_fast_x_mm, HALF_CELL_MM) && on_grid(s_fast_y_mm, 0.0f)) {
+    /* 横の辺（南北の区画のあいだ）：北側の区画の南の辺 */
+    int north_y = (int)roundf(s_fast_y_mm / CELL_MM);
+    if (north_y <= 0 || north_y >= MAZE_SIZE || s_true_wall[cell_x][north_y][DIR_SOUTH]) {
+      fast_error("探索の既知区間で、壁のある辺を通った");
+    }
+  } else if (on_grid(s_fast_x_mm, 0.0f) && on_grid(s_fast_y_mm, HALF_CELL_MM)) {
+    /* 縦の辺（東西の区画のあいだ）：東側の区画の西の辺 */
+    int east_x = (int)roundf(s_fast_x_mm / CELL_MM);
+    if (east_x <= 0 || east_x >= MAZE_SIZE || s_true_wall[east_x][cell_y][DIR_WEST]) {
+      fast_error("探索の既知区間で、壁のある辺を通った");
+    }
+  }
+}
+
+/* 区画 (x, y) の入口の辺（向き dir で入るときの、うしろの辺）のまん中の位置 [mm] */
+static void entry_edge_mm(int x, int y, direction_t dir, float *edge_x_mm, float *edge_y_mm)
+{
+  *edge_x_mm = x * CELL_MM + HALF_CELL_MM;
+  *edge_y_mm = y * CELL_MM + HALF_CELL_MM;
+  if (dir == DIR_NORTH) {
+    *edge_y_mm = y * CELL_MM;
+  } else if (dir == DIR_SOUTH) {
+    *edge_y_mm = (y + 1) * CELL_MM;
+  } else if (dir == DIR_EAST) {
+    *edge_x_mm = x * CELL_MM;
+  } else {
+    *edge_x_mm = (x + 1) * CELL_MM;
+  }
+}
+
+/* 向き dir の角度 [deg]（北が 90°、東が 0°） */
+static float direction_deg(direction_t dir)
+{
+  if (dir == DIR_NORTH) {
+    return 90.0f;
+  }
+  if (dir == DIR_SOUTH) {
+    return 270.0f;
+  }
+  if (dir == DIR_EAST) {
+    return 0.0f;
+  }
+  return 180.0f;
+}
+
+/* 探索の速さ（仮の機体（探索）が覚えている、探索の値。吸引探索なら 1000、吸引なしなら 500） */
+static float fast_search_speed_mm_s(void)
+{
+  if (s_sim_suction_values) {
+    return SUCTION_SEARCH_SPEED_MM_S;
+  }
+  return SEARCH_SPEED_MM_S;
+}
+
+/* 今の探索の速さ（ctrl/run.c と同じく、選んだ探索の値の速さ） */
+float run_get_search_speed_mm_s(void)
+{
+  return fast_search_speed_mm_s();
+}
+
+/* 探索の既知区間を斜めで走り始める：仮の機体（探索）の位置（区画の入口の辺）から、仮の機体 その 2 を同じところに置く */
+void run_search_known_path_begin(void)
+{
+  if (!sim_begin_motion()) {
+    return;  /* フェイルセーフ：動かない（このあとの run_fast_* も、explore.c が最初の 1 つで止める） */
+  }
+  sim_must_be_moving("止まっているのに、既知区間を斜めで走り始めた");
+  if (fabsf(fast_search_speed_mm_s() - BIG90_1000_SPEED_MM_S) > 0.01f) {
+    sim_error("組 1000 のターンの速さと、探索の速さが違う（吸引探索でないのに、既知区間を斜めで走った）");
+  }
+  /* 仮の機体（探索）は、区画 (s_sim_x, s_sim_y) の入口の辺にいる */
+  entry_edge_mm(s_sim_x, s_sim_y, s_sim_dir, &s_fast_x_mm, &s_fast_y_mm);
+  s_fast_heading_deg = direction_deg(s_sim_dir);
+  s_fast_speed_mm_s = fast_search_speed_mm_s();
+  s_fast_in_known = true;
+  s_fast_known_path_count = s_fast_known_path_count + 1;
+}
+
+/* 探索の既知区間を斜めで走り終わる：仮の機体 その 2 の位置を、仮の機体（探索）の位置（区画と向き）に戻す。
+ * 縦横を向いて、壁の辺のまん中にいて、探索の速さで走っているはず */
+void run_search_known_path_end(void)
+{
+  if (!s_fast_in_known) {
+    return;  /* begin でフェイルセーフになった */
+  }
+  s_fast_in_known = false;
+  if (s_sim_failsafe) {
+    return;
+  }
+  float heading_deg = fmodf(s_fast_heading_deg + 3600.0f, 360.0f);
+  direction_t dir = DIR_NORTH;
+  if (fabsf(heading_deg - 90.0f) < 1.0f) {
+    dir = DIR_NORTH;
+  } else if (fabsf(heading_deg - 270.0f) < 1.0f) {
+    dir = DIR_SOUTH;
+  } else if (heading_deg < 1.0f || heading_deg > 359.0f) {
+    dir = DIR_EAST;
+  } else if (fabsf(heading_deg - 180.0f) < 1.0f) {
+    dir = DIR_WEST;
+  } else {
+    sim_error("既知区間を斜めで走り終わったのに、縦横を向いていない");
+  }
+  if (!at_edge_middle()) {
+    sim_error("既知区間を斜めで走り終わったのに、壁の辺のまん中にいない");
+  }
+  if (fabsf(s_fast_speed_mm_s - fast_search_speed_mm_s()) > 0.01f) {
+    sim_error("既知区間を斜めで走り終わったのに、探索の速さで走っていない");
+  }
+  /* 入口の辺の先の区画 */
+  float ahead_x_mm = s_fast_x_mm + HALF_CELL_MM * cosf(direction_deg(dir) * 3.14159265f / 180.0f);
+  float ahead_y_mm = s_fast_y_mm + HALF_CELL_MM * sinf(direction_deg(dir) * 3.14159265f / 180.0f);
+  s_sim_x = (int)floorf(ahead_x_mm / CELL_MM);
+  s_sim_y = (int)floorf(ahead_y_mm / CELL_MM);
+  s_sim_dir = dir;
+  s_sim_stopped = false;
+  if (s_fast_error_count > 0) {
+    sim_error("既知区間を斜めで走るあいだに、仮の機体 その 2 がおかしな頼まれ方をした");
+    s_fast_error_count = 0;
+  }
 }
 
 /* 小回り（No.1）：区画の入口の辺の上から、探索の速さで曲がり、横の区画の入口の辺へ（前へ半区画・横へ半区画） */
@@ -3454,7 +3613,11 @@ static void fast_small_turn(bool is_left)
   if (!at_edge_middle()) {
     fast_error("小回りを、区画の入口の辺の上でないところから始めた");
   }
-  if (fabsf(s_fast_speed_mm_s - SEARCH_SPEED_MM_S) > 0.01f) {
+  float small_turn_speed_mm_s = SEARCH_SPEED_MM_S;  /* 最短走行 No.1 は、吸引なしの探索の速さ */
+  if (s_fast_in_known) {
+    small_turn_speed_mm_s = fast_search_speed_mm_s();  /* 探索の既知区間では、今の探索の速さ */
+  }
+  if (fabsf(s_fast_speed_mm_s - small_turn_speed_mm_s) > 0.01f) {
     fast_error("小回りを、探索の速さでない速さで始めた");
   }
   s_fast_small_turn_count = s_fast_small_turn_count + 1;
@@ -3593,6 +3756,35 @@ static bool shortest_used_values(int number, run_turn_set_t set, float suction_v
   return ok;
 }
 
+/* 既知区間を斜めで走る探索（モード0 No.12。EXPLORE_UNKNOWN_WALLS_KNOWN_DIAG）：迷路ファイルとランダムな迷路で、
+ * 壁に当たらず、仮の機体 その 2 がおかしな頼まれ方をせず、未知壁探索と同じく、最短走行の組 1・組 2 の経路の壁を全部見るか。
+ * 斜めの既知区間の経路を、本当に走ったか */
+static void test_explore_known_diagonal_run(int maze_count)
+{
+  printf("[9] 探索走行：既知区間を斜めで走る（No.12）：迷路ファイルとランダムな迷路 %d 個\n", maze_count);
+  int fail_count = 0;
+  s_fast_known_path_count = 0;
+  if (!load_maze_file("mazes/maze16_alljapan2025.txt")) {
+    check(false, "迷路ファイルが読めない");
+    return;
+  }
+  if (!explore_and_check(EXPLORE_UNKNOWN_WALLS_KNOWN_DIAG, true, true)) {
+    fail_count = fail_count + 1;
+  }
+  int file_path_count = s_fast_known_path_count;
+  for (int maze_index = 0; maze_index < maze_count; maze_index++) {
+    s_random_seed = (unsigned int)(maze_index + 90001);
+    make_random_true_maze();
+    if (!explore_and_check(EXPLORE_UNKNOWN_WALLS_KNOWN_DIAG, true, false)) {
+      fail_count = fail_count + 1;
+    }
+  }
+  printf("  うまくいかなかった走行 %d 回、斜めの既知区間の経路を走った回数 %d 回（全日本 2025 の迷路で %d 回）\n", fail_count,
+         s_fast_known_path_count, file_path_count);
+  check(fail_count == 0, "既知区間を斜めで走っても、壁に当たらず、未知壁探索と同じく最短経路の壁を全部見て、スタートに戻る");
+  check(s_fast_known_path_count > 0, "斜めの既知区間の経路を、本当に走った");
+}
+
 /* 最短走行のあと、ゴールの区画のまん中から、探索しながらスタートへ帰る（モード0 No.11。explore_return_from）。
  * ランダムな迷路で、未知壁探索＋既知区間加速で探索してから、ゴールの区画のまん中に（反対を向いて）置き、帰らせる */
 static void test_return_from_goal(int maze_count)
@@ -3729,6 +3921,7 @@ int main(void)
   test_explore_random(300, 3140);
   test_shortest_runs(300);
   test_return_from_goal(300);
+  test_explore_known_diagonal_run(300);
 
   if (s_fail_count == 0) {
     printf("すべて成功\n");

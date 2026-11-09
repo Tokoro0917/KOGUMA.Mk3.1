@@ -70,6 +70,12 @@
 #define SUCTION_VOLTAGE_V 5.5f
 #define SUCTION_RAMP_MS   500   /* 0 から SUCTION_VOLTAGE_V まで上げるのにかける時間 [ms]（急に回して電池の電圧が落ちないように） */
 
+/* ---- 吸引探索の既知区間を斜めで走る（モード0 No.12。KOGUMA.MkIIl の Robot_Maze_Pass_Action の G_Known_Naname） ----
+ * 縦横の直進は既知区間加速と同じ（SUCTION_KNOWN_*）。斜めの直進は KOGUMA.MkIIl の Motor_NANAME_PID(1000, 3000, 1000, 10000)。
+ * 斜め入り・斜め出・V90 は、ターンの組 1000（config/turn_params.h）で、吸引探索の速さ（1000mm/s）で曲がる */
+#define KNOWN_DIAG_MAX_SPEED_MM_S 3000.0f   /* 斜めの直進の最高速 [mm/s] */
+#define KNOWN_DIAG_ACCEL_MM_S2    10000.0f  /* 斜めの直進の加速度 [mm/s²] */
+
 /* ---- その場旋回・前壁合わせ・止まる ---- */
 
 #define PIVOT_OMEGA_DEG_S  600.0f    /* その場旋回の最高の角速度 [deg/s]（KOGUMA.MkIIl の Motor_trapezoid_Turn(90, 600, 20000)） */

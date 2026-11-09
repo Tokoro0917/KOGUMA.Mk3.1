@@ -8,6 +8,7 @@
  *   - ターンの組が 2 つ（config/turn_params.h）なので、モード3 No.1〜7 は組 2000、No.9〜15 は組 2400 の同じ並びのターン
  *     （No.9 大回り 90°〜No.15 V90°。KOGUMA.MkIIl のモード6 No.1〜7・モード7 No.1〜7 と同じ並び）
  *   - 斜めの直進のテスト（ToraNeko.Mk3 のモード3 No.8・9）は、モード4 No.2・3 に移した（turn_test_run_diag()）
+ *   - 組 1000（探索の既知区間を斜めで走るときのターン。モード0 No.12）を、モード2 No.9〜15 で走らせる（turn_test_run_1000()）
  *   - 速くする・止まる加速度を 25000mm/s² にした（2400mm/s まで、斜め 1 つぶん 127mm で上げるため。下の TURN_TEST_ACCEL_MM_S2）
  *   - 吸引の強さを、組 2000 は 7.9V、組 2400 は 11.1V にした（最短走行と同じ。config/run_params.h の SHORTEST*_SUCTION_V）
  *   - 走行ログは 1ms ごとで 1600 行（1.6 秒）
@@ -183,17 +184,29 @@ void turn_test_run_diag(bool use_correction)
   signal_end();
 }
 
+static void run_turn_test(int turn_number, run_turn_set_t set, float suction_v);  /* 下にある（名前だけ先に書く） */
+
 /* モード3 No.number のターンを走らせる（流れは先頭のコメント）。No.1〜7 は組 2000、No.9〜15 は組 2400 */
 void turn_test_run(int number)
 {
-  int turn_number = number;
-  float suction_v = SHORTEST5_SUCTION_V;
-  run_fast_set_turn_set(RUN_TURN_SET_2000);
   if (number >= 9) {
-    turn_number = number - 8;  /* 組 2400 は、組 2000 と同じ並び */
-    suction_v = SHORTEST8_SUCTION_V;
-    run_fast_set_turn_set(RUN_TURN_SET_2400);
+    run_turn_test(number - 8, RUN_TURN_SET_2400, SHORTEST8_SUCTION_V);  /* 組 2400 は、組 2000 と同じ並び */
+  } else {
+    run_turn_test(number, RUN_TURN_SET_2000, SHORTEST5_SUCTION_V);
   }
+}
+
+/* モード2 No.number（9〜15）：組 1000 のターンを走らせる（KOGUMA.Mk3.1 で足した。探索の既知区間を斜めで走るときのターン。
+ * KOGUMA.MkIIl のモード5 No.1〜7（Turn1000_Test）。並びはモード3 と同じ。吸引は探索と同じ 5.5V） */
+void turn_test_run_1000(int number)
+{
+  run_turn_test(number - 8, RUN_TURN_SET_1000, SUCTION_VOLTAGE_V);
+}
+
+/* ターン turn_number（1〜7。turn_of_number() の並び）を、組 set で、吸引 suction_v [V] で走らせる（流れは先頭のコメント） */
+static void run_turn_test(int turn_number, run_turn_set_t set, float suction_v)
+{
+  run_fast_set_turn_set(set);
   run_fast_turn_t turn = turn_of_number(turn_number);
   float speed_mm_s = run_fast_turn_speed_mm_s(turn);
 

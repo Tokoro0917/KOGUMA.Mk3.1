@@ -37,6 +37,14 @@
  * 動く前に、その区画のまん中で止まり、近すぎた側の壁で位置と向きを直す（run_search_align_to_side()）。
  * 直したあとは止まっているので、次の動きは、まん中からの発進になる（行き先の決め方は変わらない）。
  *
+ * ■ 既知区間を斜めで（KOGUMA.MkIIl のモード0 No.12。KOGUMA.Mk3.1 で足した。try_known_diagonal()）
+ * 既知区間加速と同じく、走っているときに、今いる区画から先の見たことのある区画の経路を作る（maze/path.c の
+ * path_make_known_diagonal()。ジグザグのところを、斜め入り・斜めの直進・V90・斜め出にしたもの）。斜めの動きがあれば、
+ * その経路を最短走行の動き（ctrl/run.c の run_fast_*）でまとめて走る。曲がるところは、斜めは組 1000 のターン（1000mm/s）、
+ * 小回りは探索と同じスラローム。縦横の直進は既知区間加速と同じ速さ（4000mm/s まで）、斜めの直進は 3000mm/s まで。
+ * 経路は、まだ見ていない区画の入口の辺で、縦横の向きで終わる（斜めのまま終わる区間は、path.c が小回りに戻してある）。
+ * 吸引探索（1000mm/s）で使う（組 1000 のターンの速さと、探索の速さが同じでないといけない）。
+ *
  * ■ エセ全面探索（KOGUMA.MkIIl のモード0 No.2・5。KOGUMA.Mk3.1 で足した）
  * ゴールに着いたら、目的地を「まだ入っていない区画すべて」にして（maze/search.c の search_set_target_unvisited()）、
  * いちばん近い区画へ足立法で進むのを繰り返す。見た壁で袋小路とわかった区画は、行き止まり潰しで目的地から外す。
@@ -62,7 +70,9 @@
 #include "ctrl/wall_ctrl.h"
 #include "drv/fan.h"
 #include "maze/dijkstra.h"
+#include "config/turn_params.h"
 #include "maze/maze_map.h"
+#include "maze/path.h"
 #include "maze/search.h"
 #include "sys/failsafe.h"
 #include "sys/flash.h"
@@ -83,7 +93,9 @@ static int s_y = 0;
 static direction_t s_dir = DIR_NORTH;
 static bool s_stopped = true;
 
-static bool s_use_known = false;  /* 既知区間加速をするか（No.7 のときだけ true） */
+static bool s_use_known = false;  /* 既知区間加速をするか（No.7・No.12 のとき true） */
+static bool s_use_known_diagonal = false;  /* 既知区間を斜めで走るか（No.12 のときだけ true） */
+static path_t s_known_path;  /* 既知区間を斜めで走るときの経路（大きいので、関数の中ではなくここに置く） */
 
 /* ---------------------------------------------------------------------------
  * 1 区画ぶんの動き
@@ -223,6 +235,124 @@ static bool try_known_straight(void)
   return true;
 }
 
+/* 経路 path に、斜めの動き（斜め入り・斜め出・V90・斜めの直進）があるか */
+static bool path_has_diagonal(const path_t *path)
+{
+  for (int i = 0; i < path->count; i++) {
+    motion_t motion = path->steps[i].motion;
+    if (motion != MOTION_STRAIGHT && motion != MOTION_TURN_LEFT && motion != MOTION_TURN_RIGHT && motion != MOTION_UTURN) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/* 経路 path に、U ターンがあるか（U ターンは止まらないとできないので、斜めの経路では走らない） */
+static bool path_has_uturn(const path_t *path)
+{
+  for (int i = 0; i < path->count; i++) {
+    if (path->steps[i].motion == MOTION_UTURN) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/* 斜めの動き motion を、ctrl/run.c のターンの種類にする（斜め入り 45°・135°、斜め出 45°・135°、V90°） */
+static run_fast_turn_t diagonal_turn_kind(motion_t motion)
+{
+  if (motion == MOTION_DIAG_IN45_LEFT || motion == MOTION_DIAG_IN45_RIGHT) {
+    return RUN_FAST_TURN_IN45;
+  }
+  if (motion == MOTION_DIAG_IN135_LEFT || motion == MOTION_DIAG_IN135_RIGHT) {
+    return RUN_FAST_TURN_IN135;
+  }
+  if (motion == MOTION_DIAG_OUT45_LEFT || motion == MOTION_DIAG_OUT45_RIGHT) {
+    return RUN_FAST_TURN_OUT45;
+  }
+  if (motion == MOTION_DIAG_OUT135_LEFT || motion == MOTION_DIAG_OUT135_RIGHT) {
+    return RUN_FAST_TURN_OUT135;
+  }
+  return RUN_FAST_TURN_V90;
+}
+
+/* 斜めの動き motion が、左に曲がるか */
+static bool is_left_diagonal_turn(motion_t motion)
+{
+  if (motion == MOTION_DIAG_IN45_LEFT || motion == MOTION_DIAG_IN135_LEFT || motion == MOTION_DIAG_OUT45_LEFT
+      || motion == MOTION_DIAG_OUT135_LEFT || motion == MOTION_DIAG_V90_LEFT) {
+    return true;
+  }
+  return false;
+}
+
+/* 斜めの経路の i 番目の動きを走る（ctrl/run.c の run_fast_*。どの動きも、探索の速さで終わる）。
+ * 縦横の直進を始める位置は、経路の始め・小回りのあとなら区画の境目の上（0mm）、斜め出のあとなら区画のまん中 */
+static void run_known_path_step(int i)
+{
+  motion_t motion = s_known_path.steps[i].motion;
+  float speed_mm_s = run_get_search_speed_mm_s();
+  if (motion == MOTION_STRAIGHT) {
+    float start_in_cell_mm = 0.0f;
+    if (i > 0) {
+      motion_t before = s_known_path.steps[i - 1].motion;
+      if (before != MOTION_TURN_LEFT && before != MOTION_TURN_RIGHT) {
+        start_in_cell_mm = HALF_CELL_MM;  /* 斜め出のあと */
+      }
+    }
+    run_fast_straight(s_known_path.steps[i].half_count * HALF_CELL_MM, SUCTION_KNOWN_MAX_SPEED_MM_S, speed_mm_s,
+                      SUCTION_KNOWN_ACCEL_MM_S2, start_in_cell_mm);
+  } else if (motion == MOTION_DIAG_STRAIGHT) {
+    run_fast_diag_straight(s_known_path.steps[i].half_count * DIAG_STEP_MM, KNOWN_DIAG_MAX_SPEED_MM_S, speed_mm_s,
+                           KNOWN_DIAG_ACCEL_MM_S2);
+  } else if (motion == MOTION_TURN_LEFT) {
+    run_fast_turn_left();   /* 探索と同じ小回り */
+  } else if (motion == MOTION_TURN_RIGHT) {
+    run_fast_turn_right();
+  } else {
+    run_fast_turn(diagonal_turn_kind(motion), is_left_diagonal_turn(motion), speed_mm_s);  /* 組 1000 のターン */
+  }
+}
+
+/* 既知区間を斜めで走る（No.12。先頭のコメントの「■ 既知区間を斜めで」）。走っているときに、今いる区画から先の、見たことのある
+ * 区画の経路（maze/path.c の path_make_known_diagonal()）に斜めの動きがあれば、その経路をまとめて走る。
+ * 走ったら true（位置を経路の終わりに進め、着いた区画の壁を記録してある）。走らなかったら false（このあと既知区間加速か、
+ * ふつうの 1 区画ずつの動きにする）。歩数マップ（search_update_step_map()）は、呼ぶ前に作っておくこと */
+static bool try_known_diagonal(void)
+{
+  if (!s_use_known_diagonal || s_stopped) {
+    return false;
+  }
+  path_make_known_diagonal(s_x, s_y, s_dir, &s_known_path);
+  if (!path_has_diagonal(&s_known_path) || path_has_uturn(&s_known_path)) {
+    return false;  /* 斜めがない（既知区間加速で走る）か、U ターンがある（止まらないとできない） */
+  }
+  run_search_known_path_begin();
+  for (int i = 0; i < s_known_path.count; i++) {
+    run_known_path_step(i);
+    if (failsafe_is_stopped()) {
+      break;
+    }
+  }
+  run_search_known_path_end();
+  s_x = s_known_path.end_x;
+  s_y = s_known_path.end_y;
+  s_dir = s_known_path.end_dir;
+  if (!failsafe_is_stopped()) {
+    record_walls_here();
+  }
+  return true;
+}
+
+/* 見たことのある区画をまとめて走る（No.12 は斜め、No.7・12 はまっすぐの既知区間加速）。走ったら true */
+static bool try_known_run(void)
+{
+  if (try_known_diagonal()) {
+    return true;
+  }
+  return try_known_straight();
+}
+
 /* 横壁合わせ（先頭のコメント）：走っていて、今入った区画で横の壁が近すぎるなら、まん中で止まって、その壁で位置を直す。
  * 止まって直したら true（このあとは止まっている） */
 static bool align_if_too_close(void)
@@ -263,7 +393,7 @@ static explore_result_t run_to_target(void)
       return EXPLORE_RESULT_FAILSAFE;
     }
     search_update_step_map();
-    if (try_known_straight()) {
+    if (try_known_run()) {
       if (failsafe_is_stopped()) {
         return EXPLORE_RESULT_FAILSAFE;
       }
@@ -438,7 +568,7 @@ static explore_result_t scan_unknown_walls(int goal_x, int goal_y, int goal_widt
      * その区画に入れば、センサでその壁を見られる */
     search_set_target(cell_x, cell_y, 1, 1);
     search_update_step_map();
-    if (try_known_straight()) {
+    if (try_known_run()) {
       if (failsafe_is_stopped()) {
         return EXPLORE_RESULT_FAILSAFE;
       }
@@ -510,6 +640,20 @@ static explore_result_t finish_done(void)
  * 探索走行
  * ------------------------------------------------------------------------- */
 
+/* 走り方 type から、既知区間加速（s_use_known）と既知区間を斜めで（s_use_known_diagonal）を決める */
+static void set_known_options(explore_type_t type)
+{
+  s_use_known = false;
+  s_use_known_diagonal = false;
+  if (type == EXPLORE_UNKNOWN_WALLS_KNOWN) {
+    s_use_known = true;
+  }
+  if (type == EXPLORE_UNKNOWN_WALLS_KNOWN_DIAG) {
+    s_use_known = true;
+    s_use_known_diagonal = true;
+  }
+}
+
 /* 探索走行をする。機体をスタート区画に北向きに置いてから呼ぶ。走り終わるまで戻ってこない。
  * type で走り方を、suction で吸引するかを選ぶ（explore.h）。ゴールは、左下の区画 (goal_x, goal_y) と幅・高さ [区画] */
 explore_result_t explore_run(explore_type_t type, bool suction, int goal_x, int goal_y, int goal_width,
@@ -524,10 +668,9 @@ explore_result_t explore_run(explore_type_t type, bool suction, int goal_x, int 
     ui_wait_ms(SUCTION_SETTLE_MS);
   }
 
-  /* 既知区間加速は No.7 だけ。No.7 は、ほかは未知壁探索（No.6）と同じ */
-  s_use_known = false;
-  if (type == EXPLORE_UNKNOWN_WALLS_KNOWN) {
-    s_use_known = true;
+  /* 既知区間加速は No.7・No.12、既知区間を斜めでは No.12 だけ。ほかは未知壁探索（No.6）と同じ */
+  set_known_options(type);
+  if (type == EXPLORE_UNKNOWN_WALLS_KNOWN || type == EXPLORE_UNKNOWN_WALLS_KNOWN_DIAG) {
     type = EXPLORE_UNKNOWN_WALLS;
   }
 
@@ -594,9 +737,8 @@ explore_result_t explore_return_from(explore_type_t type, bool suction, int x, i
     suction_ramp_up();
     ui_wait_ms(SUCTION_SETTLE_MS);
   }
-  s_use_known = false;
-  if (type == EXPLORE_UNKNOWN_WALLS_KNOWN) {
-    s_use_known = true;
+  set_known_options(type);
+  if (type == EXPLORE_UNKNOWN_WALLS_KNOWN || type == EXPLORE_UNKNOWN_WALLS_KNOWN_DIAG) {
     type = EXPLORE_UNKNOWN_WALLS;
   }
   maze_map_clear_recent_cells();  /* この走行で記録した壁だけを、フェイルセーフのときに戻すようにする */

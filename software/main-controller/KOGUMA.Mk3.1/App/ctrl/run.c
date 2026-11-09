@@ -8,8 +8,9 @@
  *     どちらの値で走るかを run_search_set_suction() で選ぶ（下の「■ 探索の 2 とおりの値」）。吸引のファンを回すのは呼んだ側（sys/explore.c）
  *   - 区画の大きさ（180mm）に合わせて、コメントの距離を直した。値はすべて config/run_params.h（KOGUMA.MkIIl の値）
  *   - 前壁補正と壁切れは、測るだけにしてある（config/run_params.h の FRONT_CORRECTION_ENABLE・WALL_EDGE_ENABLE が 0）
- *   - 大回り・斜めのターンの値を 2 組（組 2000・組 2400。KOGUMA.MkIIl の G_Turn2000・G_Turn2400）にした。
- *     どちらで曲がるかを run_fast_set_turn_set() で選ぶ（config/turn_params.h の先頭のコメント）
+ *   - 大回り・斜めのターンの値を 3 組（組 2000・組 2400・組 1000。KOGUMA.MkIIl の G_Turn2000・G_Turn2400・G_Turn1000）にした。
+ *     どの組で曲がるかを run_fast_set_turn_set() で選ぶ（config/turn_params.h の先頭のコメント）
+ *   - 探索の既知区間を斜めで走るための run_search_known_path_begin()・end() を足した（モード0 No.12）
  * モードの番号（モード7 No.1 など）は ToraNeko.Mk3 のもの。KOGUMA.Mk3.1 もモードの並びは ToraNeko.Mk3 と同じにする（ステップ9 の MODES.md）。
  *
  * ■ 2 つの状態（run.h の先頭のコメント）
@@ -758,6 +759,29 @@ void run_search_back_to_start_wall(void)
   control_stop();
 }
 
+/* ---- 探索の既知区間を斜めで走る（KOGUMA.Mk3.1 で足した。モード0 No.12。KOGUMA.MkIIl の Robot_Maze_Pass_Action の G_Known_Naname） ----
+ * 走っている（区画の入口の辺を探索の速さで通る）ところから、見たことのある区画の経路（sys/explore.c が maze/path.c で作る）を、
+ * 最短走行の動き（run_fast_straight・run_fast_diag_straight・run_fast_turn・run_fast_turn_left/right）で走る。
+ *   1. run_search_known_path_begin()：ターンの組を組 1000 にする（斜め入り・斜め出・V90 は 1000mm/s で曲がる）
+ *   2. 経路の動きを 1 つずつ、run_fast_* で走る（終わりの速さは、どれも探索の速さ。吸引探索の 1000mm/s ＝ 組 1000 の速さ）
+ *   3. run_search_known_path_end()：斜めのしるしを消し、横の壁に沿って走る補正を入れ直し、ターンの組を組 2000 に戻す。
+ *      このあとは、ふつうの探索の動き（run_search_straight など）にもどる（経路の終わりの区画の入口の辺を走っている） */
+static void set_on_diagonal(bool on);  /* 下の「最短走行の動き」で作っている（ここで先に使うので、名前だけ先に書く） */
+
+void run_search_known_path_begin(void)
+{
+  measure_wait();
+  run_fast_set_turn_set(RUN_TURN_SET_1000);
+}
+
+void run_search_known_path_end(void)
+{
+  set_on_diagonal(false);
+  control_set_wall_control(true);  /* 探索の直進では、横の壁に沿って走る補正を入れる（start_control() と同じ） */
+  run_fast_set_turn_set(RUN_TURN_SET_2000);
+  mark_return();
+}
+
 /* 止まっている → 前に壁があれば前壁合わせをして、その場で向きを変えて（turn）、
  * 次の区画の入口の辺まで、速くしながら進む。U ターンは、左に 90° 回るたびに、前に壁があれば前壁合わせをする */
 void run_search_go_from_center(run_turn_t turn)
@@ -961,11 +985,40 @@ static fast_turn_values_t fast_turn_values_2400(run_fast_turn_t turn)
   return values;
 }
 
+/* ターン turn の値を、組 1000 の表から取り出す（fast_turn_values_2000() と同じ形。名前に _1000 が付いた値） */
+static fast_turn_values_t fast_turn_values_1000(run_fast_turn_t turn)
+{
+  fast_turn_values_t values = {90.0f, BIG90_1000_SPEED_MM_S, BIG90_1000_OMEGA_DEG_S, BIG90_1000_ALPHA_DEG_S2, BIG90_1000_PRE_MM + BIG90_1000_PRE_ADJUST_MM, BIG90_1000_POST_MM + BIG90_1000_POST_ADJUST_MM};
+  if (turn == RUN_FAST_TURN_BIG180) {
+    fast_turn_values_t big180 = {180.0f, BIG180_1000_SPEED_MM_S, BIG180_1000_OMEGA_DEG_S, BIG180_1000_ALPHA_DEG_S2, BIG180_1000_PRE_MM + BIG180_1000_PRE_ADJUST_MM, BIG180_1000_POST_MM + BIG180_1000_POST_ADJUST_MM};
+    values = big180;
+  } else if (turn == RUN_FAST_TURN_IN45) {
+    fast_turn_values_t in45 = {45.0f, IN45_1000_SPEED_MM_S, IN45_1000_OMEGA_DEG_S, IN45_1000_ALPHA_DEG_S2, IN45_1000_PRE_MM + IN45_1000_PRE_ADJUST_MM, IN45_1000_POST_MM + IN45_1000_POST_ADJUST_MM};
+    values = in45;
+  } else if (turn == RUN_FAST_TURN_IN135) {
+    fast_turn_values_t in135 = {135.0f, IN135_1000_SPEED_MM_S, IN135_1000_OMEGA_DEG_S, IN135_1000_ALPHA_DEG_S2, IN135_1000_PRE_MM + IN135_1000_PRE_ADJUST_MM, IN135_1000_POST_MM + IN135_1000_POST_ADJUST_MM};
+    values = in135;
+  } else if (turn == RUN_FAST_TURN_OUT45) {
+    fast_turn_values_t out45 = {45.0f, OUT45_1000_SPEED_MM_S, OUT45_1000_OMEGA_DEG_S, OUT45_1000_ALPHA_DEG_S2, OUT45_1000_PRE_MM + OUT45_1000_PRE_ADJUST_MM, OUT45_1000_POST_MM + OUT45_1000_POST_ADJUST_MM};
+    values = out45;
+  } else if (turn == RUN_FAST_TURN_OUT135) {
+    fast_turn_values_t out135 = {135.0f, OUT135_1000_SPEED_MM_S, OUT135_1000_OMEGA_DEG_S, OUT135_1000_ALPHA_DEG_S2, OUT135_1000_PRE_MM + OUT135_1000_PRE_ADJUST_MM, OUT135_1000_POST_MM + OUT135_1000_POST_ADJUST_MM};
+    values = out135;
+  } else if (turn == RUN_FAST_TURN_V90) {
+    fast_turn_values_t v90 = {90.0f, V90_1000_SPEED_MM_S, V90_1000_OMEGA_DEG_S, V90_1000_ALPHA_DEG_S2, V90_1000_PRE_MM + V90_1000_PRE_ADJUST_MM, V90_1000_POST_MM + V90_1000_POST_ADJUST_MM};
+    values = v90;
+  }
+  return values;
+}
+
 /* ターン turn の値を、今の組（s_turn_set）の表から取り出す */
 static fast_turn_values_t fast_turn_values(run_fast_turn_t turn)
 {
   if (s_turn_set == RUN_TURN_SET_2400) {
     return fast_turn_values_2400(turn);
+  }
+  if (s_turn_set == RUN_TURN_SET_1000) {
+    return fast_turn_values_1000(turn);
   }
   return fast_turn_values_2000(turn);
 }

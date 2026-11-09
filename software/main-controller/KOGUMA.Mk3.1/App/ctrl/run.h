@@ -28,6 +28,8 @@
  *   run_search_start_at_center()  区画のまん中で止まっているところから、探索を始める（制御とログを始めるだけ。KOGUMA.Mk3.1 で足した）
  *   run_search_turn_back_at_center(距離)  止まっている → その場で反対を向き、距離だけ進んで区画のまん中で止まる
  *                                 （探索のあとに続けて最短走行するとき、最短走行のあとに帰るとき。KOGUMA.Mk3.1 で足した）
+ *   run_search_known_path_begin()・end()  走っている → 見たことのある区画の経路を、最短走行の動き（run_fast_*）で走る前と後に呼ぶ
+ *                                 （探索の既知区間を斜めで走るとき。モード0 No.12。KOGUMA.Mk3.1 で足した。run.c の説明）
  *   run_search_back_to_start_wall()  止まっている（スタート区画のまん中で北向き）→ 後ろの壁まで下がって止まる
  *                                 （続けて最短走行するとき、ふつうに置いたときと同じ位置にする。KOGUMA.Mk3.1 で足した）
  *   run_search_go_from_center()   止まっている → 前に壁があれば前壁合わせをし、その場で向きを変えて発進し、
@@ -69,6 +71,8 @@ void run_search_align_to_side(bool is_left);
 void run_search_start_at_center(void);
 void run_search_turn_back_at_center(float forward_mm);
 void run_search_back_to_start_wall(void);
+void run_search_known_path_begin(void);
+void run_search_known_path_end(void);
 
 /* 最短走行（モード1 は sys/shortest.c、モード3 のターンの調整は sys/turn_test.c）の動き。
  *   run_fast_start()                                  制御とログを始める（動かない）
@@ -100,6 +104,7 @@ typedef enum {
 typedef enum {
   RUN_TURN_SET_2000,  /* 組 2000（KOGUMA.MkIIl の G_Turn2000） */
   RUN_TURN_SET_2400,  /* 組 2400（KOGUMA.MkIIl の G_Turn2400） */
+  RUN_TURN_SET_1000,  /* 組 1000（KOGUMA.MkIIl の G_Turn1000。探索の既知区間を斜めで走るとき） */
 } run_turn_set_t;
 
 void run_fast_set_turn_set(run_turn_set_t set);
