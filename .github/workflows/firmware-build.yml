@@ -1,0 +1,58 @@
+name: firmware-build
+
+# ToraNeko.Mk3 の .github/workflows/firmware-build.yml と同じ形。
+# メイン基板のファームウェア（software/main-controller/KOGUMA.Mk3.1/ の CMake プロジェクト）が ARM 向けにビルドできることと、
+# App/ の PC 上のテスト（test/ の make：今は test_maze）が通ることを確認する。
+on:
+  push:
+    branches: [main]
+    paths: ['software/main-controller/KOGUMA.Mk3.1/**', 'software/main-controller/test/**', '.github/workflows/firmware-build.yml']
+  pull_request:
+    paths: ['software/main-controller/KOGUMA.Mk3.1/**', 'software/main-controller/test/**', '.github/workflows/firmware-build.yml']
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: software/main-controller/KOGUMA.Mk3.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ツールチェーンのインストール
+        run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi ninja-build
+
+      - name: ビルド (Debug)
+        shell: bash  # パイプ（| tee）の前のビルドが失敗したときに、このステップを失敗にする（pipefail が付く）
+        run: |
+          cmake --preset Debug
+          cmake --build --preset Debug 2>&1 | tee build.log
+
+      - name: 警告がないこと（CLAUDE.md のルール。警告が 1 つでもあれば失敗にする）
+        run: |
+          if grep -q "warning:" build.log; then
+            grep "warning:" build.log
+            exit 1
+          fi
+
+      - name: サイズ（プログラムは Flash の前の 256KB に収める。後ろの 256KB は迷路などの保存場所。ToraNeko.Mk3 と同じ）
+        shell: bash
+        run: |
+          arm-none-eabi-size build/Debug/KOGUMA.Mk3.1.elf
+          # Flash に入る大きさ = text（プログラムと定数）+ data（変数の初めの値）
+          flash_bytes=$(arm-none-eabi-size build/Debug/KOGUMA.Mk3.1.elf | awk 'NR == 2 { print $1 + $2 }')
+          if [ "$flash_bytes" -gt 262144 ]; then
+            echo "プログラムが 256KB を超えた（${flash_bytes} バイト）。保存場所（セクタ6・7）と重なるので、保存したときにプログラムが消える"
+            exit 1
+          fi
+
+  maze-test:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: software/main-controller/test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PC 上のテスト（test_maze）
+        run: make

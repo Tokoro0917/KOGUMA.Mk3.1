@@ -1,0 +1,38 @@
+// VS Code のタスク（KOGUMA.Mk3.1/.vscode/tasks.json にコピーして使う。手順は tools/vscode/README.md）
+//
+// 「書き込み」：ビルドの準備（cmake --preset Debug。KOGUMA.Mk3.1 で足した。初めてでもビルドできるように）をして、ビルドして、ST-LINK で書き込み、リセットして走らせる。デバッグを始めないので、
+// 書き込んだあとに ■（停止）を押さなくても、次の書き込みができる。Ctrl+Shift+B で実行する。
+// F5 はデバッグ（止めて変数を見るなど）をしたいときだけ使う。F5 のデバッグ中は ST-LINK を使っているので、
+// 「書き込み」の前に ■ で止める。
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "ビルドの準備",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["--preset", "Debug"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "ビルド",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["--build", "--preset", "Debug"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": "ビルドの準備",
+      "problemMatcher": []
+    },
+    {
+      "label": "書き込み",
+      "type": "shell",
+      "command": "STM32_Programmer_CLI",
+      "args": ["-c", "port=SWD", "-w", "${workspaceFolder}/build/Debug/KOGUMA.Mk3.1.elf", "-v", "-rst"],
+      "dependsOn": "ビルド",
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "always", "clear": true },
+      "problemMatcher": []
+    }
+  ]
+}
