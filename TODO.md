@@ -35,10 +35,15 @@ KOGUMA.MkIIl の学生大会（2026-11-21〜22）までは、作者の実機の�
 ### 取り込む
 
 - [ ] 2026-11-08 の基準より前の変更は、移植のときに最新のコードを持ってくるので、ここには書かない（[docs/reference_sync.md](docs/reference_sync.md) の 2026-11-08 の記録に、最初から入れるものを並べた）
+- [ ] 探索でスタートに戻ったら、前壁合わせをしつつ北を向き、お尻を後ろの壁に当ててから迷路を保存する（ToraNeko.Mk3 `16e912f`・`66381ae`。作者の案）→ `sys/explore.c`（`finish_done()` をスタート用の `finish_at_start()` に分ける）、`sys/mode.c`（`shortest_after_search()` の向きを変える・下がるを消す）、`test/test_maze.c`。KOGUMA.Mk3.1 には、もう `run_search_turn_back_at_center()`・`run_search_back_to_start_wall()` がある（今はモード0 No.8〜11 で最短走行の前だけ使う）ので、呼ぶ場所を探索の終わりに移すだけ。下がり方は、ToraNeko は電圧をかけて壁に押し当てる（向きもそろう）、KOGUMA.Mk3.1 は後ろへの直進で START_OFFSET_MM だけ下がる。どちらにするかは作者に聞く
+- [ ] 最短走行は、ゴールに入ってからもう 1 区画進んで、ゴールの 2 つ目の区画のまん中で止まる（ToraNeko.Mk3 `47d1187`。作者の案）→ `sys/shortest.c`（`extend_into_goal()` を足す）、`test/test_maze.c` の [10]。ターンでゴールに入っても止まるところがまん中になるので、`shortest_get_end_overshoot_mm()` と `run_search_turn_back_at_center()` の進む距離（モード0 No.11 の帰り）がいらなくなり、簡単になる
+- [ ] 会場ごとの感度合わせ（B5）を、ToraNeko.Mk3 の形で作る（ToraNeko.Mk3 `ec4055e`・`2ce9248`・`93921c9`・`b794c55`）→ `ctrl/wall_ctrl.c/.h`（センサの値を全部「そのままの値 ÷ 倍率」にする。今の KOGUMA.Mk3.1 は `ctrl/wall_dist.c` の距離に直すところだけで割っている）、`sys/venue.c`（新しい）、`sys/flash.c`（ゴールの場所に倍率 4 つと壁制御の目標 2 つを足す）、`sys/mode.c`（モード7 No.3 倍率合わせ〈区画の境目で測る〉・No.4 壁制御の目標〈区画の中心で測る〉・No.5 元に戻す）、test_flash・test_mode。KOGUMA.MkIIl の WallDist_Scale（区画のまん中で前・左・右に壁がある置き方）は、横のセンサに前の壁の光が入って倍率が大きく出すぎる、と ToraNeko でわかった。家の値（区画の境目・区画の中心）は KOGUMA の機体で測る必要がある（ステップ6 のセンサの確認のあと）。境目に置くためのセンタリング板（クラシックの大きさ）も要る
 
 ### 様子を見る
 
 - [ ] KOGUMA.MkIIl の学生大会に向けた変更（電池を替えたあとのターンの合わせ直し、直線の加速の限界の測定、2400 を使うか）。結果が出たら、ステップ7・10 の値に使う（KOGUMA.MkIIl `TODO.md`）
+- [ ] 吸引の力のテスト（ToraNeko.Mk3 モード4 No.3。`0b6e308`・`b58673b`。1V ずつ上げて、はかりの表示が減った分を読む）→ KOGUMA.Mk3.1 の吸引の電圧（5.5・7.9・11.1V）は KOGUMA.MkIIl の値のまま。KOGUMA の機体で、電圧ごとの吸う力を測りたくなったら、モード4 の空いている番号に足す
+- [ ] 横の壁がないところから行き止まりに入ると、入口で前のセンサが前の壁のしきい値を下回って、前の壁を見落とした（ToraNeko.Mk3 `cb4d39e`。ToraNeko は右前のしきい値を 900 → 700 にした）→ KOGUMA.Mk3.1 のしきい値（`ctrl/wall_ctrl.c`、KOGUMA.MkIIl の値）でも起きないか、ステップ6・9 の実機の確認で、行き止まりに入るときのログを見る
 
 ## 記録
 
