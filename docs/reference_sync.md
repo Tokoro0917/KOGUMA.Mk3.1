@@ -8,8 +8,8 @@ KOGUMA.Mk3.1 は、2 つのリポジトリを見ながら作ります。どち�
 
 | リポジトリ | ブランチ | 最後に見たコミット | その日付 |
 |---|---|---|---|
-| [Tokoro0917/KOGUMA.MkIIl](https://github.com/Tokoro0917/KOGUMA.MkIIl) | `master` | `512b2c1` | 2026-11-13 |
-| [Tokoro0917/ToraNeko.Mk3](https://github.com/Tokoro0917/ToraNeko.Mk3) | `main` | `76a8cf7` | 2026-11-13 |
+| [Tokoro0917/KOGUMA.MkIIl](https://github.com/Tokoro0917/KOGUMA.MkIIl) | `master` | `512b2c1` | 2026-11-14 |
+| [Tokoro0917/ToraNeko.Mk3](https://github.com/Tokoro0917/ToraNeko.Mk3) | `main` | `76a8cf7` | 2026-11-14 |
 
 ## 確かめ方（毎朝の手順）
 
@@ -33,6 +33,10 @@ KOGUMA.Mk3.1 は、2 つのリポジトリを見ながら作ります。どち�
 ## 記録
 
 新しい日を上に足す。
+
+### 2026-11-14
+
+- 変更なし（KOGUMA.MkIIl `master` は `512b2c1`、ToraNeko.Mk3 `main` は `76a8cf7` のまま）。TODO.md に足すものはない（2026-11-11・11-13 に足した「取り込む」は、作者の返事待ち）
 
 ### 2026-11-13
 
