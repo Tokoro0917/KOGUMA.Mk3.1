@@ -8,8 +8,8 @@ KOGUMA.Mk3.1 は、2 つのリポジトリを見ながら作ります。どち�
 
 | リポジトリ | ブランチ | 最後に見たコミット | その日付 |
 |---|---|---|---|
-| [Tokoro0917/KOGUMA.MkIIl](https://github.com/Tokoro0917/KOGUMA.MkIIl) | `master` | `fa64b58` | 2026-11-09 |
-| [Tokoro0917/ToraNeko.Mk3](https://github.com/Tokoro0917/ToraNeko.Mk3) | `main` | `ecd8e10` | 2026-11-09 |
+| [Tokoro0917/KOGUMA.MkIIl](https://github.com/Tokoro0917/KOGUMA.MkIIl) | `master` | `512b2c1` | 2026-11-14 |
+| [Tokoro0917/ToraNeko.Mk3](https://github.com/Tokoro0917/ToraNeko.Mk3) | `main` | `76a8cf7` | 2026-11-14 |
 
 ## 確かめ方（毎朝の手順）
 
@@ -33,6 +33,50 @@ KOGUMA.Mk3.1 は、2 つのリポジトリを見ながら作ります。どち�
 ## 記録
 
 新しい日を上に足す。
+
+### 2026-11-14
+
+- 変更なし（KOGUMA.MkIIl `master` は `512b2c1`、ToraNeko.Mk3 `main` は `76a8cf7` のまま）。TODO.md に足すものはない（2026-11-11・11-13 に足した「取り込む」は、作者の返事待ち）
+
+### 2026-11-13
+
+- KOGUMA.MkIIl `58a6329..512b2c1`（3 コミットとマージ）
+  - **様子を見る**：`734d8d5` 探索の横壁合わせ（ToraNeko.Mk3 と同じ。64mm、今は記録だけ）。KOGUMA.Mk3.1 にはもう同じものがある。実機の記録が出たら、入れるか決める
+  - **関係ない**：`3c32763` 開発は STM32CubeIDE のままにする（CMake は CI のビルド用に残す）。`c9af6b3` 未知壁探索の 10-27 の変更を実機で確かめた（問題なし）
+- ToraNeko.Mk3 `4981fb9..76a8cf7`（8 コミットとマージ）
+  - **取り込む**
+    - `886eefc`：直進の加速度を、モーターが出せる加速度で抑える（速いほど小さい）。KOGUMA（6000mm/s・25000mm/s²）のほうが効く
+    - `675875e`：スタートで後ろの壁に当てるのを、電圧ではなく速さの制御で下がる形に戻した（KOGUMA.Mk3.1 と同じ形）。押し当てる 3mm・0.2 秒を TODO.md の 1 つ目に足した
+    - `ea94178`・`4944c99`：最短走行がゴールで止まったら入ってきた向きを向き、位置を覚える（ゴールから始める探索は作ってすぐ消した）。TODO.md の 2 つ目に足した
+  - **様子を見る**
+    - `485020f`：最短走行の直進の加速度に、吸引の強さから出したグリップの上限を入れる（KOGUMA の吸う力・μ を測ってから）
+    - `f056d0a`：モードの並べ直し、吸引なしの加速度テスト 2000〜4000mm/s²
+  - **関係ない**
+    - `e25ff0f`：最短走行の吸引の電圧を No. ごとに決める（KOGUMA.Mk3.1 は最初から SHORTEST*_SUCTION_V と `suction_ramp_up_to()` がある）
+    - `9bf3c9f`：ターンの組 3（ToraNeko の値）と最短 No.7
+
+### 2026-11-12
+
+- 変更なし（KOGUMA.MkIIl `master` は `58a6329`、ToraNeko.Mk3 `main` は `4981fb9` のまま）。TODO.md に足すものはない（2026-11-11 に足した 3 つの「取り込む」は、作者の返事待ち）
+
+### 2026-11-11
+
+- KOGUMA.MkIIl `fa64b58..58a6329`（3 コミットとマージ）：STM32CubeIDE をやめて、VS Code + CMake でビルドするようにした（ToraNeko.Mk3 と同じ形。`docs/vscode_setup.md`）。`main.c` の `Motor.h` → `motor.h`、CI に ARM のビルド。機体の値・機能の変更はない → **関係ない**（KOGUMA.Mk3.1 は最初から同じ形。新しい PC に入れた VS Code・arm-none-eabi-gcc〈11 以降〉・CMake・Ninja で、KOGUMA.Mk3.1 もそのままビルドできる）
+- ToraNeko.Mk3 `ecd8e10..4981fb9`（21 コミットとマージ）
+  - **取り込む**（TODO.md の「参照元の変更から」）
+    - `16e912f`・`66381ae`：探索でスタートに戻ったら、前壁合わせをしつつ北を向き、お尻を後ろの壁に当ててから迷路を保存する
+    - `47d1187`：最短走行は、ゴールに入ってからもう 1 区画進んで、ゴールの 2 つ目の区画のまん中で止まる
+    - `ec4055e`・`2ce9248`・`93921c9`・`b794c55`：会場ごとの感度合わせ（倍率を全部のセンサの値にかける、区画の境目で測る、壁制御の目標を区画の中心で別に測る、Flash に保存、モード7 No.3〜5）。KOGUMA.Mk3.1 の B5 にそのまま使う
+  - **様子を見る**
+    - `0b6e308`・`b58673b`・`94096da`：吸引の力のテスト（モード4 No.3）と、ファンの電圧の上限 5.0 → 7.0V（ToraNeko のファン）
+    - `cb4d39e`・`c5c389b`：壁のしきい値の変更（ToraNeko の機体の値）。行き止まりで前の壁を見落とした話は、KOGUMA でも実機で見る
+  - **関係ない**
+    - `80855d0`：7 つとも 1000mm/s のターンの組（組 2）と最短 No.6。KOGUMA.Mk3.1 には、もう組 1000 と `run_fast_set_turn_set()` がある（KOGUMA.MkIIl の G_Turn1000）
+    - `ecd1e4f`・`f0140c5`・`3810e27`・`079fc39`：スカート枠・センタリング板（ToraNeko の機構）
+    - `bfe414e`・`f167e8e`・`78b0b73`：ログ。`08e09f6`：test_wall_ctrl の実行ファイルを外した（KOGUMA.Mk3.1 には test_wall_ctrl がまだない）
+### 2026-11-10
+
+- 変更なし（KOGUMA.MkIIl `master` は `fa64b58`、ToraNeko.Mk3 `main` は `ecd8e10` のまま）。TODO.md に足すものはない
 
 ### 2026-11-09
 
