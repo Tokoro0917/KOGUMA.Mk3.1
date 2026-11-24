@@ -8,8 +8,8 @@ KOGUMA.Mk3.1 は、2 つのリポジトリを見ながら作ります。どち�
 
 | リポジトリ | ブランチ | 最後に見たコミット | その日付 |
 |---|---|---|---|
-| [Tokoro0917/KOGUMA.MkIIl](https://github.com/Tokoro0917/KOGUMA.MkIIl) | `master` | `02223ed` | 2026-11-24 |
-| [Tokoro0917/ToraNeko.Mk3](https://github.com/Tokoro0917/ToraNeko.Mk3) | `main` | `2be7ea3` | 2026-11-24 |
+| [Tokoro0917/KOGUMA.MkIIl](https://github.com/Tokoro0917/KOGUMA.MkIIl) | `master` | `90f1b71` | 2026-11-25 |
+| [Tokoro0917/ToraNeko.Mk3](https://github.com/Tokoro0917/ToraNeko.Mk3) | `main` | `e5c32bc` | 2026-11-25 |
 
 ## 確かめ方（毎朝の手順）
 
@@ -33,6 +33,17 @@ KOGUMA.Mk3.1 は、2 つのリポジトリを見ながら作ります。どち�
 ## 記録
 
 新しい日を上に足す。
+
+### 2026-11-25
+
+- KOGUMA.MkIIl `02223ed..90f1b71`（3 コミット）
+  - **取り込む**：`5473f0a`・`f64aa9a`・`90f1b71` 次の機体 KOGUMA Mk3 の STEP と、回路図・基板（KiCad 9.0）。作者が「`hardware/ecad/` は Mk3 の基板」と確かめた。マイコンは STM32F446RET6U のまま。基板データ（`.kicad_pcb`）でマイコンの 64 ピンのつながりを読み、`software/main-controller/PIN_REQUIREMENTS.md` の「回路図」の列に書いた（**全部、今のファームウェアのとおり**。PA10〜PA12 はどこにもつながっていない）。コードのコメント・.ioc に入れるのは TODO.md の「取り込む」
+  - メモ：KOGUMA.MkIIl の README では、基板の `gerber/` は古い版（2025-05）なので、発注前に作り直す、とある。モータードライバ MP6550 の電流の出力（ISEN）はマイコンにつながっていない（ToraNeko.Mk3 の「次の基板で電流を測る」は、Mk3 の基板でもできない）
+- ToraNeko.Mk3 `2be7ea3..e5c32bc`（4 コミットとマージ）
+  - **取り込む**
+    - `723baee`：向きの制御を「目標の向き」で持ち、斜めの直進でも向きを戻す（`App/ctrl/control.c` の作りの変更）
+    - `6af4ab5`・`f385408`：ターンの調整の助走で、向きを迷路の向きに戻す
+  - **関係ない**：`2f5d1c7` ログ
 
 ### 2026-11-24
 

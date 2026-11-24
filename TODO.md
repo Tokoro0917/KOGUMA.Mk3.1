@@ -10,6 +10,7 @@ KOGUMA.MkIIl の学生大会（2026-11-21〜22）までは、作者の実機の�
 - [ ] （急がない）CubeMX で `KOGUMA.Mk3.1.ioc` を開いて、エラーなく開けるか・生成したコードが変わらないかを確かめる（手順は [software/main-controller/CUBEMX_SETUP.md](software/main-controller/CUBEMX_SETUP.md) の 1-2）
 - [ ] **ステップ1〜7 を実機で確かめる**（書き込むと KOGUMA.MkIIl の大会用のファームウェアは消えるので、確かめたら書き戻す。手順は [software/main-controller/README.md](software/main-controller/README.md) の「ステップ1〜7の確かめ方」）
 - [ ] **メイン基板の回路図**（PDF でよい）を `hardware/` に置く。とくに知りたいこと：PA10〜PA12 の用途、モータードライバの型番と TIM3 CH1〜4 のつながり、壁センサの受光と ADC チャンネル・発光の組の対応、電池の分圧の抵抗（[hardware/README.md](hardware/README.md)）
+  - 2026-11-25：KOGUMA.MkIIl に KOGUMA Mk3 の回路図・基板（KiCad）と STEP が入った（`hardware/ecad/`・`hardware/KOGUMA.Mk3.step`。`90f1b71`）。基板データでマイコンの 64 ピンのつながりを読み、[software/main-controller/PIN_REQUIREMENTS.md](software/main-controller/PIN_REQUIREMENTS.md) の「回路図」の列に書いた。**全部、今のファームウェアのとおり**。知りたかったことの答え：PA10〜PA12 はどこにもつながっていない、モータードライバは MP6550GG-P（PC6・PC7 が左、PC8・PC9 が右）、受光と ADC・発光の組は `drv/wall.c` のとおり、電池の分圧は 47kΩ / 10kΩ。残り：KOGUMA.Mk3.1 の `hardware/kicad/KOGUMA.Mk3/` にも置くか（作者に聞く）
 - [x] PC とのシリアルに何を使っているか → STLINK-V3 の仮想 COM ポート。921600bps にする（2026-11-08）
 - [x] 決定事項の案と KOGUMA_PORTING.md の B の案を決める → 2026-11-08 のアンケートで決まった（下の「記録」）
 
@@ -41,6 +42,10 @@ KOGUMA.MkIIl の学生大会（2026-11-21〜22）までは、作者の実機の�
 - [ ] 会場ごとの感度合わせ（B5）を、ToraNeko.Mk3 の形で作る（ToraNeko.Mk3 `ec4055e`・`2ce9248`・`93921c9`・`b794c55`）→ `ctrl/wall_ctrl.c/.h`（センサの値を全部「そのままの値 ÷ 倍率」にする。今の KOGUMA.Mk3.1 は `ctrl/wall_dist.c` の距離に直すところだけで割っている）、`sys/venue.c`（新しい）、`sys/flash.c`（ゴールの場所に倍率 4 つと壁制御の目標 2 つを足す）、`sys/mode.c`（モード7 No.3 倍率合わせ〈区画の境目で測る〉・No.4 壁制御の目標〈区画の中心で測る〉・No.5 元に戻す）、test_flash・test_mode。KOGUMA.MkIIl の WallDist_Scale（区画のまん中で前・左・右に壁がある置き方）は、横のセンサに前の壁の光が入って倍率が大きく出すぎる、と ToraNeko でわかった。家の値（区画の境目・区画の中心）は KOGUMA の機体で測る必要がある（ステップ6 のセンサの確認のあと）。境目に置くためのセンタリング板（クラシックの大きさ）も要る
 
 - [ ] 長い直進のテスト（16 区画）を足して、タイヤの直径を長い距離で合わせる（ToraNeko.Mk3 `f8e0c93`・`7d9b8da`・`988f979`。ToraNeko は大会の会場の 1360mm で約 36mm〈2.6%〉手前に止まり、タイヤの直径を 15.05 → 14.65mm に直した。横の壁に沿う補正を入れて走る）→ `sys/adjust.c`（今の直進のテスト〈564mm〉を `run_straight_test(距離)` にまとめ、24 + 15 × 180 = 2724mm を足す）、`sys/mode.c`・README・MODES.md・test_mode。KOGUMA.Mk3.1 の TIRE_DIAMETER_MM（23.42mm）を実機で合わせるときに使う（残っている作業の 1 つ）
+
+- [ ] Mk3 の回路図で確かめたことを、コードのコメントと .ioc に入れる（KOGUMA.MkIIl `90f1b71`。上の「作者にお願いすること」）→ `drv/motor.c`・`drv/fan.c`・`drv/switch.c`・`drv/wall.c`・`drv/led.c` の「回路図で確認」を、確かめた中身（MP6550GG-P、ファンは VBAT と N チャネル FET、受光 SFH 229 FA、分圧 47k/10k、S2 は 10kΩ で引き上げ）に書き換える。`KOGUMA.Mk3.1.ioc` の PA10〜PA12 の GPIO 出力を消す（どこにもつながっていない。CubeMX で生成し直す）。CUBEMX_SETUP.md・README の「回路図で確認」も直す
+- [ ] 向きの制御を「目標の向き」で持つ（スタートを 0° として走り終わるまで 1 つの値で持つ）。斜めの直進でも、柱や壁が見えないときは 45° ずらした向きへ戻す（ToraNeko.Mk3 `723baee`。作者の案）→ `ctrl/control.c/.h`、`config/ctrl_gains.h`、`sys/log.c`（走行ログに angle_target の列）、test_control・test_output。**ToraNeko の `App/ctrl/` の作りの変更なので、同じ形にする**。ターンで回り足りなかった分が、次の直進で直るようになる
+- [ ] ターンの調整（モード3）の助走で、向きを迷路の向きに戻す（壁を見ないで戻す `control_set_heading_hold_without_walls`、斜めに置いて始める `run_fast_start_open_area`）。後距離のあとの止まるところは戻さない（ToraNeko.Mk3 `6af4ab5`・`f385408`）→ `ctrl/control.c`・`ctrl/run.c`・`sys/turn_test.c`・MODES.md。上の「目標の向き」と一緒に
 
 ### 様子を見る
 
