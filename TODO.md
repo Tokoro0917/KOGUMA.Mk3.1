@@ -10,6 +10,7 @@ KOGUMA.MkIIl の学生大会（2026-11-21〜22）までは、作者の実機の�
 - [ ] （急がない）CubeMX で `KOGUMA.Mk3.1.ioc` を開いて、エラーなく開けるか・生成したコードが変わらないかを確かめる（手順は [software/main-controller/CUBEMX_SETUP.md](software/main-controller/CUBEMX_SETUP.md) の 1-2）
 - [ ] **ステップ1〜7 を実機で確かめる**（書き込むと KOGUMA.MkIIl の大会用のファームウェアは消えるので、確かめたら書き戻す。手順は [software/main-controller/README.md](software/main-controller/README.md) の「ステップ1〜7の確かめ方」）
 - [ ] **メイン基板の回路図**（PDF でよい）を `hardware/` に置く。とくに知りたいこと：PA10〜PA12 の用途、モータードライバの型番と TIM3 CH1〜4 のつながり、壁センサの受光と ADC チャンネル・発光の組の対応、電池の分圧の抵抗（[hardware/README.md](hardware/README.md)）
+  - 2026-11-25：KOGUMA.MkIIl に KOGUMA Mk3 の回路図・基板（KiCad）と STEP が入った（`hardware/ecad/`・`hardware/KOGUMA.Mk3.step`。`90f1b71`）。基板データでマイコンの 64 ピンのつながりを読み、[software/main-controller/PIN_REQUIREMENTS.md](software/main-controller/PIN_REQUIREMENTS.md) の「回路図」の列に書いた。**全部、今のファームウェアのとおり**。知りたかったことの答え：PA10〜PA12 はどこにもつながっていない、モータードライバは MP6550GG-P（PC6・PC7 が左、PC8・PC9 が右）、受光と ADC・発光の組は `drv/wall.c` のとおり、電池の分圧は 47kΩ / 10kΩ。残り：KOGUMA.Mk3.1 の `hardware/kicad/KOGUMA.Mk3/` にも置くか（作者に聞く）
 - [x] PC とのシリアルに何を使っているか → STLINK-V3 の仮想 COM ポート。921600bps にする（2026-11-08）
 - [x] 決定事項の案と KOGUMA_PORTING.md の B の案を決める → 2026-11-08 のアンケートで決まった（下の「記録」）
 
@@ -35,10 +36,28 @@ KOGUMA.MkIIl の学生大会（2026-11-21〜22）までは、作者の実機の�
 ### 取り込む
 
 - [ ] 2026-11-08 の基準より前の変更は、移植のときに最新のコードを持ってくるので、ここには書かない（[docs/reference_sync.md](docs/reference_sync.md) の 2026-11-08 の記録に、最初から入れるものを並べた）
+- [ ] 探索でスタートに戻ったら、前壁合わせをしつつ北を向き、お尻を後ろの壁に当ててから迷路を保存する（ToraNeko.Mk3 `16e912f`・`66381ae`。作者の案）→ `sys/explore.c`（`finish_done()` をスタート用の `finish_at_start()` に分ける）、`sys/mode.c`（`shortest_after_search()` の向きを変える・下がるを消す）、`test/test_maze.c`。KOGUMA.Mk3.1 には、もう `run_search_turn_back_at_center()`・`run_search_back_to_start_wall()` がある（今はモード0 No.8〜11 で最短走行の前だけ使う）ので、呼ぶ場所を探索の終わりに移すだけ。下がり方：ToraNeko は電圧をかける形をやめて、KOGUMA.Mk3.1 と同じ「後ろへの直進（速さの制御）」に変えた（`675875e`。電圧だと左右の摩擦の違いで片方のタイヤしか回らなかった）。KOGUMA.Mk3.1 の今の形のまま、ToraNeko と同じく、壁まで（START_OFFSET_MM）より 3mm 多く下がるように頼み（押し当てる）、0.2 秒待ってから止める（`ctrl/run.c` の `run_search_back_to_start_wall()`、`config/run_params.h` に BACK_TO_WALL_*。速さは 100 → 50mm/s）
+- [ ] 最短走行は、ゴールに入ってからもう 1 区画進んで、ゴールの 2 つ目の区画のまん中で止まる（ToraNeko.Mk3 `47d1187`。作者の案）→ `sys/shortest.c`（`extend_into_goal()` を足す）、`test/test_maze.c` の [10]。ターンでゴールに入っても止まるところがまん中になるので、`shortest_get_end_overshoot_mm()` と `run_search_turn_back_at_center()` の進む距離（モード0 No.11 の帰り）がいらなくなり、簡単になる。ToraNeko は、さらに、最短走行がゴールで止まったら、前壁合わせをしながら入ってきた向きを向き、止まった位置・向きを覚えるようにした（`ea94178`・`4944c99`。`sys/shortest.c` の `turn_back_at_goal()`、`shortest_end_pose_t`）。KOGUMA.Mk3.1 ではモード0 No.11 の帰り（`sys/mode.c` の `return_from_goal()`）が同じことをしているので、合わせて `sys/shortest.c` に移すとよい
+- [ ] 直進の加速度を、速さで変える（決めた加速度と、モーターが出せる加速度の小さいほう）。直進の終わりの速さも、その距離で上げられる速さまでにする（ToraNeko.Mk3 `886eefc`）→ `ctrl/trajectory.c`（`trajectory_straight_accel_mm_s2()`・`trajectory_reachable_speed_mm_s()`）、`config/ctrl_gains.h`（ACCEL_LIMIT_VOLTAGE_V）、`sys/shortest.c`、test_trajectory・test_maze。**KOGUMA のほうが効く**：今の FF の値（速さ 0.0015V/(mm/s)、加速度 0.00035V/(mm/s²)、摩擦 1.2V）で、加速に使ってよい電圧を上限 16.8V の 8 割（13.4V）とすると、モーターが出せる加速度は 0mm/s で約 35000、3000mm/s で約 22000、4500mm/s で約 15600、6000mm/s で約 9100mm/s²。最短 No.4〜9（6000mm/s、15000〜25000mm/s²）は、速いところで目標の加速度に追いつけない。電池の電圧（4S、走ると下がる）で上限をどう決めるかは、ステップ7 で FF の値を測ってから決める
+- [ ] 会場ごとの感度合わせ（B5）を、ToraNeko.Mk3 の形で作る（ToraNeko.Mk3 `ec4055e`・`2ce9248`・`93921c9`・`b794c55`）→ `ctrl/wall_ctrl.c/.h`（センサの値を全部「そのままの値 ÷ 倍率」にする。今の KOGUMA.Mk3.1 は `ctrl/wall_dist.c` の距離に直すところだけで割っている）、`sys/venue.c`（新しい）、`sys/flash.c`（ゴールの場所に倍率 4 つと壁制御の目標 2 つを足す）、`sys/mode.c`（モード7 No.3 倍率合わせ〈区画の境目で測る〉・No.4 壁制御の目標〈区画の中心で測る〉・No.5 元に戻す）、test_flash・test_mode。KOGUMA.MkIIl の WallDist_Scale（区画のまん中で前・左・右に壁がある置き方）は、横のセンサに前の壁の光が入って倍率が大きく出すぎる、と ToraNeko でわかった。家の値（区画の境目・区画の中心）は KOGUMA の機体で測る必要がある（ステップ6 のセンサの確認のあと）。境目に置くためのセンタリング板（クラシックの大きさ）も要る
+
+- [ ] 長い直進のテスト（16 区画）を足して、タイヤの直径を長い距離で合わせる（ToraNeko.Mk3 `f8e0c93`・`7d9b8da`・`988f979`。ToraNeko は大会の会場の 1360mm で約 36mm〈2.6%〉手前に止まり、タイヤの直径を 15.05 → 14.65mm に直した。横の壁に沿う補正を入れて走る）→ `sys/adjust.c`（今の直進のテスト〈564mm〉を `run_straight_test(距離)` にまとめ、24 + 15 × 180 = 2724mm を足す）、`sys/mode.c`・README・MODES.md・test_mode。KOGUMA.Mk3.1 の TIRE_DIAMETER_MM（23.42mm）を実機で合わせるときに使う（残っている作業の 1 つ）
+
+- [ ] Mk3 の回路図で確かめたことを、コードのコメントと .ioc に入れる（KOGUMA.MkIIl `90f1b71`。上の「作者にお願いすること」）→ `drv/motor.c`・`drv/fan.c`・`drv/switch.c`・`drv/wall.c`・`drv/led.c` の「回路図で確認」を、確かめた中身（MP6550GG-P、ファンは VBAT と N チャネル FET、受光 SFH 229 FA、分圧 47k/10k、S2 は 10kΩ で引き上げ）に書き換える。`KOGUMA.Mk3.1.ioc` の PA10〜PA12 の GPIO 出力を消す（どこにもつながっていない。CubeMX で生成し直す）。CUBEMX_SETUP.md・README の「回路図で確認」も直す
+- [ ] 向きの制御を「目標の向き」で持つ（スタートを 0° として走り終わるまで 1 つの値で持つ）。斜めの直進でも、柱や壁が見えないときは 45° ずらした向きへ戻す（ToraNeko.Mk3 `723baee`。作者の案）→ `ctrl/control.c/.h`、`config/ctrl_gains.h`、`sys/log.c`（走行ログに angle_target の列）、test_control・test_output。**ToraNeko の `App/ctrl/` の作りの変更なので、同じ形にする**。ターンで回り足りなかった分が、次の直進で直るようになる
+- [ ] ターンの調整（モード3）の助走で、向きを迷路の向きに戻す（壁を見ないで戻す `control_set_heading_hold_without_walls`、斜めに置いて始める `run_fast_start_open_area`）。後距離のあとの止まるところは戻さない（ToraNeko.Mk3 `6af4ab5`・`f385408`）→ `ctrl/control.c`・`ctrl/run.c`・`sys/turn_test.c`・MODES.md。上の「目標の向き」と一緒に
 
 ### 様子を見る
 
+- [ ] きついターンは組 2000、ゆるいターン（大回り 90°・大回り 180°・斜め出 45°）は組 2400 で走る最短（KOGUMA.MkIIl `1c6e634`、モード1 No.14。経路は No.5 と同じ。実機では未確認）→ KOGUMA.Mk3.1 の `ctrl/run.c` に「混ぜた組」を足し（ターンごとに組 2000・組 2400 の値を選ぶ。ToraNeko.Mk3 の組 4〈`c998bcc`〉と同じ考え方）、`sys/shortest.c` に No. を 1 つ足す。KOGUMA.MkIIl の実機で走れたら取り込む
+- [ ] KOGUMA.MkIIl の組 2400 の最短は「走り出しの V90 で右の壁に当たる。大会では使わない」（KOGUMA.MkIIl `7a93653` の README）→ KOGUMA.Mk3.1 の最短 No.3・No.8・No.9（組 2400）も、同じ V90 の値（`config/turn_params.h` の V90_2400_*）を使っている。KOGUMA.MkIIl で直ったら値を写す。それまでは、実機で走らせるときは No.5（組 2000）から
 - [ ] KOGUMA.MkIIl の学生大会に向けた変更（電池を替えたあとのターンの合わせ直し、直線の加速の限界の測定、2400 を使うか）。結果が出たら、ステップ7・10 の値に使う（KOGUMA.MkIIl `TODO.md`）
+- [ ] 吸引の力のテスト（ToraNeko.Mk3 モード4 No.3。`0b6e308`・`b58673b`。1V ずつ上げて、はかりの表示が減った分を読む）→ KOGUMA.Mk3.1 の吸引の電圧（5.5・7.9・11.1V）は KOGUMA.MkIIl の値のまま。KOGUMA の機体で、電圧ごとの吸う力を測りたくなったら、モード4 の空いている番号に足す（ToraNeko は 2026-11-11 にモード6 No.4 へ移した）
+- [ ] 最短走行の直進の加速度に、吸引の強さから出したグリップの上限を入れる（ToraNeko.Mk3 `485020f`。上限 = 吸引なしで滑る加速度 ×（機体の重さ ＋ 吸引の力）÷ 機体の重さ × 0.8）→ `sys/shortest.c`。KOGUMA の機体で、吸引なしで滑り始める加速度（下の加速度テスト）と、電圧ごとの吸う力（上の吸引の力のテスト）を測ってから入れる
+- [ ] 吸引なしの加速度テストを、低い加速度から並べる（ToraNeko.Mk3 `f056d0a`。2000〜4000mm/s²。滑り始めた加速度からタイヤの μ を出す）→ KOGUMA.Mk3.1 のモード4 の加速度テスト（`sys/adjust.c`）。グリップの上限を入れるときに一緒に
+- [ ] ToraNeko.Mk3 がモードの番号を並べ直した（`f056d0a`・`ea94178`。番号の穴をなくし、似たものを集める。モード7 は倍率合わせ No.2〜4・ゴール No.14・迷路呼び出し No.15）→ KOGUMA.Mk3.1 の `sys/mode.c`・README・MODES.md。ToraNeko の番号はまだ変わっているので、落ち着いてから、会場ごとの感度合わせ（上の「取り込む」）を足すときに一緒に合わせる
+- [ ] 探索の横壁合わせ（KOGUMA.MkIIl `734d8d5`。KOGUMA.Mk3.1 にはもう同じものがある：SIDE_TOO_CLOSE_MM 64mm、SIDE_ALIGN_ENABLE 0 で記録だけ）→ KOGUMA.MkIIl の実機で、近すぎた回数・いちばん近かった距離が出たら、SIDE_ALIGN_ENABLE を 1 にするか決める
+- [ ] 横の壁がないところから行き止まりに入ると、入口で前のセンサが前の壁のしきい値を下回って、前の壁を見落とした（ToraNeko.Mk3 `cb4d39e`。ToraNeko は右前のしきい値を 900 → 700 にした）→ KOGUMA.Mk3.1 のしきい値（`ctrl/wall_ctrl.c`、KOGUMA.MkIIl の値）でも起きないか、ステップ6・9 の実機の確認で、行き止まりに入るときのログを見る
 
 ## 記録
 
